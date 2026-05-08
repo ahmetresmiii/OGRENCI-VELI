@@ -852,9 +852,9 @@ export default function App() {
             </div>
             <div>
               <span className="text-xl font-black tracking-tight bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
-                DERSLİKLİNK
+                DERSLİKE
               </span>
-              <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">Firebase Cloud Entegre</p>
+              <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">TÜRKÇE*Ahmet Şahin</p>
             </div>
           </div>
 
