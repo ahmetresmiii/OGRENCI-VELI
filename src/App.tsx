@@ -780,7 +780,13 @@ export default function App() {
                         <Lock className="h-3 w-3" />
                         <span>Şifre</span>
                       </label>
-                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="Ahmet1227" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="
+Eserinin üzerinde imzası olmayan yegâne sanatkâr öğretmendir.
+
+
+
+
+" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                     <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold py-2.5 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2 cursor-pointer text-sm">
                       <span>Giriş</span>
