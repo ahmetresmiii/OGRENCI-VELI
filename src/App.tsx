@@ -119,7 +119,7 @@ interface CalendarEvent {
   recordingTitle?: string;
 }
 
-const TEACHER_PASSWORD = 'A123';
+const TEACHER_PASSWORD = 'Ahmos';
 
 export default function App() {
   // --- STATE ---
@@ -982,7 +982,7 @@ export default function App() {
                     )}
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
-                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="ahmet12" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="Bilgi Arar" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
@@ -1015,7 +1015,7 @@ export default function App() {
                     )}
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
-                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="veli_ahmet" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="Kanat gerer." className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
@@ -2140,7 +2140,7 @@ export default function App() {
       <footer className="mt-16 border-t border-slate-700/50 bg-slate-950/80 py-8 text-xs text-slate-500 text-center backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 space-y-2">
           <p className="font-bold text-slate-400">DersLink — Öğretmen, Öğrenci & Veli Platformu (Firebase Firestore Bağlantılı)</p>
-          <p>Öğretmen Şifresi: <code className="text-amber-400">A123</code> • PDF & Ekran Kaydı • Çift Yönlü Cloud & Yerel Senkronizasyon © 2026</p>
+          <p>Öğretmen Şifresi: <code className="text-amber-400">IŞIK SAÇAR</code> • PDF & Ekran Kaydı • Çift Yönlü Cloud & Yerel Senkronizasyon © 2026</p>
           <div className="pt-2 flex justify-center space-x-4">
             <button onClick={() => setCurrentRole('guest')} className="text-amber-400 hover:underline font-bold">Giriş Ekranına Dön</button>
           </div>
