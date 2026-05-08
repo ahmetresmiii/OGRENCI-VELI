@@ -862,7 +862,7 @@ export default function App() {
             {/* Realtime Firebase Badge indicator */}
             <div className={`hidden sm:flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${firebaseStatus === 'Aktif (Canlı)' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
               <Database className="h-3 w-3 animate-pulse" />
-              <span>Veritabanı: {firebaseStatus}</span>
+              <span>ÖĞRETMEN BAĞLANTI DURUMU: {firebaseStatus}</span>
             </div>
 
             {currentRole === 'teacher' && (
@@ -1037,9 +1037,9 @@ export default function App() {
             <div className="bg-slate-950/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
               <div className="flex items-center space-x-3 text-slate-400">
                 <FileSpreadsheet className="h-5 w-5 text-amber-400 flex-shrink-0" />
-                <span><strong>Veri Altyapısı:</strong> Firebase Firestore (<code className="bg-slate-900 px-1.5 py-0.5 rounded text-amber-200">veliogrenci-cce71</code>) + LocalStorage Kesintisiz Yedekleme.</span>
+                <span><strong>Öğretmen Bağlısınız:</strong>   Ahmet ŞAHİN (<code className="bg-slate-900 px-1.5 py-0.5 rounded text-amber-200">veliogrenci-cce71</code>) ÖĞRETMENİM İYİ Kİ VAR..</span>
               </div>
-              <div className="text-slate-500 font-mono text-[10px] whitespace-nowrap bg-slate-900 px-2 py-1 rounded">v5.0 — Cloud Connected</div>
+              <div className="text-slate-500 font-mono text-[10px] whitespace-nowrap bg-slate-900 px-2 py-1 rounded">ÖZEL DERS</div>
             </div>
           </div>
         )}
@@ -2140,7 +2140,7 @@ export default function App() {
       <footer className="mt-16 border-t border-slate-700/50 bg-slate-950/80 py-8 text-xs text-slate-500 text-center backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 space-y-2">
           <p className="font-bold text-slate-400">DersLink — Öğretmen, Öğrenci & Veli Platformu (Firebase Firestore Bağlantılı)</p>
-          <p>Öğretmen Şifresi: <code className="text-amber-400">IŞIK SAÇAR</code> • PDF & Ekran Kaydı • Çift Yönlü Cloud & Yerel Senkronizasyon © 2026</p>
+          <p>Öğrenci için pratik, öğretmen için profesyonel. Eğitimde dijitalleşmenin en kısa yoluyla tanışın! <code className="text-amber-400">BAŞARILAR</code> • PDF & Ekran Kaydı • Çift Yönlü Cloud & Yerel Senkronizasyon © 2026</p>
           <div className="pt-2 flex justify-center space-x-4">
             <button onClick={() => setCurrentRole('guest')} className="text-amber-400 hover:underline font-bold">Giriş Ekranına Dön</button>
           </div>
