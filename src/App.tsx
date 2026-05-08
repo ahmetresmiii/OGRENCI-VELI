@@ -101,7 +101,7 @@ interface CalendarEvent {
   recordingTitle?: string;
 }
 
-const TEACHER_PASSWORD = 'A123';
+const TEACHER_PASSWORD = 'Ahmos';
 
 export default function App() {
   // --- STATE ---
