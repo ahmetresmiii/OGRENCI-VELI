@@ -781,9 +781,7 @@ export default function App() {
                         <span>Şifre</span>
                       </label>
                       <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="
-Eserinin üzerinde imzası olmayan yegâne sanatkâr öğretmendir.
-
-
+Işık saçar.
 
 
 " className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
@@ -812,7 +810,9 @@ Eserinin üzerinde imzası olmayan yegâne sanatkâr öğretmendir.
                     )}
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
-                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="ahmet12" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="
+Bilgi arar.
+" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
@@ -845,7 +845,9 @@ Eserinin üzerinde imzası olmayan yegâne sanatkâr öğretmendir.
                     )}
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
-                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="veli_ahmet" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="
+Kanat gerer.
+" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
