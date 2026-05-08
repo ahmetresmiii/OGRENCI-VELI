@@ -763,7 +763,7 @@ export default function App() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                      <span>Öğretmen</span>
+                      <span>Öğretmen Yalnızca Öğretmen</span>
                       <span className="text-[10px] font-normal bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">Şifreli</span>
                     </h2>
                     <p className="text-slate-400 text-xs mt-2">Öğrenci/veli kaydı, PDF yükleme, ödev dağıtımı.</p>
@@ -780,7 +780,7 @@ export default function App() {
                         <Lock className="h-3 w-3" />
                         <span>Şifre</span>
                       </label>
-                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="A123" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="Ahmet1227" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                     <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold py-2.5 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2 cursor-pointer text-sm">
                       <span>Giriş</span>
