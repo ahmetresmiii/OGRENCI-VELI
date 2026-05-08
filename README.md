@@ -1,0 +1,2 @@
+# OGRENCI-VELI
+yönetim sistemi
