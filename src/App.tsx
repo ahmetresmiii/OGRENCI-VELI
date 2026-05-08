@@ -974,7 +974,7 @@ export default function App() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white">Öğrenci</h2>
-                    <p className="text-slate-400 text-xs mt-2">Eğitim süreçlerini tek bir merkezden yönetmek hiç bu kadar kolay olmamıştı. Öğretmenler ve öğrenciler için özel olarak tasarlanan bu platform, Google ekosistemiyle tam uyumlu çalışarak kağıt karmaşasına son veriyor.</p>
+                    <p className="text-slate-400 text-xs mt-2">Eğitim süreçlerini tek bir merkezden yönetmek hiç bu kadar kolay olmamıştı. Öğretmenler,öğrenciler VE Veliler için özel olarak tasarlanan bu platform, Google ekosistemiyle tam uyumlu çalışarak kağıt karmaşasına son veriyor.</p>
                   </div>
                   <form onSubmit={handleStudentLogin} className="space-y-3 pt-2">
                     {loginError && (
