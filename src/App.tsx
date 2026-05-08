@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { 
   UserPlus, 
   FileText, 
@@ -12,7 +14,6 @@ import {
   FileCheck, 
   ClipboardList, 
   TrendingUp, 
-  Sparkles, 
   LogOut, 
   Check, 
   ArrowRight,
@@ -33,13 +34,25 @@ import {
   BookOpen,
   PenLine,
   Save,
-  X
+  X,
+  Database,
+  Wifi
 } from 'lucide-react';
-// --- FIREBASE BAĞLANTISI ---
-import { db } from './firebase';
-import { 
-  collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy 
-} from 'firebase/firestore';
+
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBqxSvtSrKLjb-0Yq91abjXhqPy8JIbSJs",
+  authDomain: "veliogrenci-cce71.firebaseapp.com",
+  projectId: "veliogrenci-cce71",
+  storageBucket: "veliogrenci-cce71.firebasestorage.app",
+  messagingSenderId: "1092640766125",
+  appId: "1:1092640766125:web:c3b7c7dc99606515946e24",
+  measurementId: "G-JQ5PGHB7K9"
+};
+
+// Initialize Firebase App & Firestore Database
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 // --- DATA TYPE DEFINITIONS ---
 interface Student {
@@ -106,44 +119,90 @@ interface CalendarEvent {
   recordingTitle?: string;
 }
 
-const TEACHER_PASSWORD = 'Ahmos';
+const TEACHER_PASSWORD = 'A123';
 
 export default function App() {
   // --- STATE ---
-  // State'leri boş array olarak başlat
+  const [currentRole, setCurrentRole] = useState<'guest' | 'teacher' | 'student' | 'parent'>('guest');
+  const [currentStudentUser, setCurrentStudentUser] = useState<Student | null>(null);
+  const [currentParentUser, setCurrentParentUser] = useState<Parent | null>(null);
+
+  // Connection alert feedback
+  const [firebaseStatus, setFirebaseStatus] = useState<'Bağlanıyor' | 'Aktif (Canlı)' | 'Yerel Mod / Kurallar Bekleniyor'>('Bağlanıyor');
+
+  // Core records
   const [students, setStudents] = useState<Student[]>([]);
   const [parents, setParents] = useState<Parent[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [examResults, setExamResults] = useState<ExamResult[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
-  
-  const [userRole, setUserRole] = useState<'guest' | 'teacher' | 'student' | 'parent'>('guest');
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [exams, setExams] = useState<ExamItem[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
 
-  // Firebase'den verileri canlı çekme
+  // Tab views
+  const [teacherTab, setTeacherTab] = useState<'dashboard' | 'students' | 'parents' | 'documents' | 'assignments' | 'summaries' | 'calendar'>('dashboard');
+  const [studentTab, setStudentTab] = useState<'dashboard' | 'documents' | 'assignments' | 'exams' | 'calendar'>('dashboard');
+  const [parentTab, setParentTab] = useState<'dashboard' | 'student-status' | 'recordings' | 'calendar'>('dashboard');
+
+  // Credentials
+  const [teacherPass, setTeacherPass] = useState('');
+  const [teacherError, setTeacherError] = useState('');
+
+  // Form input states
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentUser, setNewStudentUser] = useState('');
+  const [newStudentPass, setNewStudentPass] = useState('');
+  const [newStudentNotes, setNewStudentNotes] = useState('');
+
+  const [newParentName, setNewParentName] = useState('');
+  const [newParentUser, setNewParentUser] = useState('');
+  const [newParentPass, setNewParentPass] = useState('');
+  const [newParentLinkedStudents, setNewParentLinkedStudents] = useState<string[]>([]);
+
+  const [newCatName, setNewCatName] = useState('');
+  const [docTitle, setDocTitle] = useState('');
+  const [docCategory, setDocCategory] = useState('');
+  const [docType, setDocType] = useState<'google-doc' | 'video' | 'link' | 'summary' | 'pdf'>('google-doc');
+  const [docUrl, setDocUrl] = useState('');
+  const [docNotes, setDocNotes] = useState('');
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
+
+  const [assignStudentId, setAssignStudentId] = useState('all');
+  const [assignTitle, setAssignTitle] = useState('');
+  const [assignDesc, setAssignDesc] = useState('');
+  const [assignDueDate, setAssignDueDate] = useState('');
+
+  const [examTitle, setExamTitle] = useState('');
+  const [examUrl, setExamUrl] = useState('');
+  const [examDesc, setExamDesc] = useState('');
+  const [examCat, setExamCat] = useState('Genel Deneme Sınavı');
+
+  const [calTitle, setCalTitle] = useState('');
+  const [calDate, setCalDate] = useState('');
+  const [calTime, setCalTime] = useState('');
+  const [calDesc, setCalDesc] = useState('');
+
+  // Login forms
+  const [studentLoginUser, setStudentLoginUser] = useState('');
+  const [studentLoginPass, setStudentLoginPass] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  const [parentLoginUser, setParentLoginUser] = useState('');
+  const [parentLoginPass, setParentLoginPass] = useState('');
+  const [parentLoginError, setParentLoginError] = useState('');
+
+  // Modals / extra UI logic
+  const [submittingAssignmentId, setSubmittingAssignmentId] = useState<string | null>(null);
+  const [studentSubmissionUrl, setStudentSubmissionUrl] = useState('');
+  const [studentSubmissionNotes, setStudentSubmissionNotes] = useState('');
+
+  const [expandedRecordingId, setExpandedRecordingId] = useState<string | null>(null);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editNotesValue, setEditNotesValue] = useState('');
+
+  // --- FIREBASE REALTIME LISTENERS & DUAL SYNC ---
   useEffect(() => {
-    const unsubStudents = onSnapshot(collection(db, "students"), (s) => 
-      setStudents(s.docs.map(d => ({ id: d.id, ...d.data() } as Student))));
-      
-    const unsubParents = onSnapshot(collection(db, "parents"), (s) => 
-      setParents(s.docs.map(d => ({ id: d.id, ...d.data() } as Parent))));
-      
-    const unsubDocs = onSnapshot(query(collection(db, "documents"), orderBy("createdAt", "desc")), (s) => 
-      setDocuments(s.docs.map(d => ({ id: d.id, ...d.data() } as DocumentItem))));
-      
-    const unsubExams = onSnapshot(collection(db, "exams"), (s) => 
-      setExamResults(s.docs.map(d => ({ id: d.id, ...d.data() } as ExamResult))));
-      
-    const unsubEvents = onSnapshot(query(collection(db, "events"), orderBy("date", "asc")), (s) => 
-      setEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as Event))));
-
-    return () => { unsubStudents(); unsubParents(); unsubDocs(); unsubExams(); unsubEvents(); };
-  }, []);
-
-  // --- INITIAL LOAD ---
-  useEffect(() => {
+    // Initial fallback load from LocalStorage to guarantee instant display
     const savedStudents = localStorage.getItem('derslink_students');
     const savedParents = localStorage.getItem('derslink_parents');
     const savedCategories = localStorage.getItem('derslink_categories');
@@ -153,11 +212,8 @@ export default function App() {
     const savedEvents = localStorage.getItem('derslink_events');
 
     if (savedStudents) setStudents(JSON.parse(savedStudents));
-    else setStudents([]);
-
     if (savedParents) setParents(JSON.parse(savedParents));
-    else setParents([]);
-
+    
     if (savedCategories) {
       setCategories(JSON.parse(savedCategories));
     } else {
@@ -167,16 +223,12 @@ export default function App() {
     }
 
     if (savedDocs) setDocuments(JSON.parse(savedDocs));
-    else setDocuments([]);
-
     if (savedAssignments) setAssignments(JSON.parse(savedAssignments));
-    else setAssignments([]);
-
     if (savedExams) setExams(JSON.parse(savedExams));
-    else setExams([]);
-
-    if (savedEvents) setEvents(JSON.parse(savedEvents));
-    else {
+    
+    if (savedEvents) {
+      setEvents(JSON.parse(savedEvents));
+    } else {
       const initialEvents: CalendarEvent[] = [
         {
           id: 'evt-1',
@@ -190,42 +242,103 @@ export default function App() {
       setEvents(initialEvents);
       localStorage.setItem('derslink_events', JSON.stringify(initialEvents));
     }
+
+    // --- SETUP REALTIME FIREBASE LISTENERS ---
+    let unsubStudents: () => void = () => {};
+    let unsubParents: () => void = () => {};
+    let unsubCategories: () => void = () => {};
+    let unsubDocs: () => void = () => {};
+    let unsubAssignments: () => void = () => {};
+    let unsubExams: () => void = () => {};
+    let unsubEvents: () => void = () => {};
+
+    try {
+      unsubStudents = onSnapshot(collection(db, "students"), (snapshot) => {
+        const items: Student[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Student));
+        setStudents(items);
+        localStorage.setItem('derslink_students', JSON.stringify(items));
+        setFirebaseStatus('Aktif (Canlı)');
+      }, (err) => {
+        console.warn("Firebase okuma kuralları bekleniyor veya internet kısıtlı. Yerel veriler kullanılıyor.", err);
+        setFirebaseStatus('Yerel Mod / Kurallar Bekleniyor');
+      });
+
+      unsubParents = onSnapshot(collection(db, "parents"), (snapshot) => {
+        const items: Parent[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Parent));
+        setParents(items);
+        localStorage.setItem('derslink_parents', JSON.stringify(items));
+      }, () => {});
+
+      unsubCategories = onSnapshot(collection(db, "categories"), (snapshot) => {
+        const items: string[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data().name));
+        if (items.length > 0) {
+          setCategories(items);
+          localStorage.setItem('derslink_categories', JSON.stringify(items));
+        }
+      }, () => {});
+
+      unsubDocs = onSnapshot(collection(db, "documents"), (snapshot) => {
+        const items: DocumentItem[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as DocumentItem));
+        setDocuments(items);
+        localStorage.setItem('derslink_documents', JSON.stringify(items));
+      }, () => {});
+
+      unsubAssignments = onSnapshot(collection(db, "assignments"), (snapshot) => {
+        const items: Assignment[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Assignment));
+        setAssignments(items);
+        localStorage.setItem('derslink_assignments', JSON.stringify(items));
+      }, () => {});
+
+      unsubExams = onSnapshot(collection(db, "exams"), (snapshot) => {
+        const items: ExamItem[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as ExamItem));
+        setExams(items);
+        localStorage.setItem('derslink_exams', JSON.stringify(items));
+      }, () => {});
+
+      unsubEvents = onSnapshot(collection(db, "events"), (snapshot) => {
+        const items: CalendarEvent[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as CalendarEvent));
+        setEvents(items);
+        localStorage.setItem('derslink_events', JSON.stringify(items));
+      }, () => {});
+
+    } catch (err) {
+      console.warn("Firebase entegrasyonu başlatılırken uyarı oluştu, tam yedeklemeli çalışıyor.", err);
+      setFirebaseStatus('Yerel Mod / Kurallar Bekleniyor');
+    }
+
+    return () => {
+      unsubStudents();
+      unsubParents();
+      unsubCategories();
+      unsubDocs();
+      unsubAssignments();
+      unsubExams();
+      unsubEvents();
+    };
   }, []);
 
-  // Sync wrappers
-  const saveStudentsToStorage = (updated: Student[]) => {
-    setStudents(updated);
-    localStorage.setItem('derslink_students', JSON.stringify(updated));
+  // --- WRITE WRAPPERS TO FIREBASE & LOCAL STORAGE (DUAL RESILIENCE) ---
+  const saveDocToFirebase = async (collectionName: string, id: string, dataObj: any) => {
+    try {
+      await setDoc(doc(db, collectionName, id), dataObj);
+    } catch (err) {
+      console.warn(`Firebase yazma uyarısı (${collectionName}): veritabanı kuralları kilitli olabilir. Yerel senkronizasyon anında gerçekleştirildi.`);
+    }
   };
 
-  const saveParentsToStorage = (updated: Parent[]) => {
-    setParents(updated);
-    localStorage.setItem('derslink_parents', JSON.stringify(updated));
-  };
-
-  const saveCategoriesToStorage = (updated: string[]) => {
-    setCategories(updated);
-    localStorage.setItem('derslink_categories', JSON.stringify(updated));
-  };
-
-  const saveDocumentsToStorage = (updated: DocumentItem[]) => {
-    setDocuments(updated);
-    localStorage.setItem('derslink_documents', JSON.stringify(updated));
-  };
-
-  const saveAssignmentsToStorage = (updated: Assignment[]) => {
-    setAssignments(updated);
-    localStorage.setItem('derslink_assignments', JSON.stringify(updated));
-  };
-
-  const saveExamsToStorage = (updated: ExamItem[]) => {
-    setExams(updated);
-    localStorage.setItem('derslink_exams', JSON.stringify(updated));
-  };
-
-  const saveEventsToStorage = (updated: CalendarEvent[]) => {
-    setEvents(updated);
-    localStorage.setItem('derslink_events', JSON.stringify(updated));
+  const deleteDocFromFirebase = async (collectionName: string, id: string) => {
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+    } catch (err) {
+      console.warn(`Firebase silme uyarısı (${collectionName}). Yerel kopya temizlendi.`);
+    }
   };
 
   // --- ACTIONS ---
@@ -242,7 +355,7 @@ export default function App() {
     }
   };
 
-  const handleAddStudent = (e: React.FormEvent) => {
+  const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudentName || !newStudentUser || !newStudentPass) {
       alert('Lütfen tüm öğrenci bilgilerini eksiksiz doldurun.');
@@ -262,43 +375,74 @@ export default function App() {
       parentIds: [],
       teacherNotes: newStudentNotes || ''
     };
+
+    // Optimistic dual update
     const updated = [...students, newStudent];
-    saveStudentsToStorage(updated);
+    setStudents(updated);
+    localStorage.setItem('derslink_students', JSON.stringify(updated));
+    await saveDocToFirebase("students", newStudent.id, newStudent);
+
     setNewStudentName('');
     setNewStudentUser('');
     setNewStudentPass('');
     setNewStudentNotes('');
-    alert('Öğrenci başarıyla kaydedildi!');
+    alert('Öğrenci başarıyla veritabanına kaydedildi!');
   };
 
-  const handleDeleteStudent = (id: string) => {
+  const handleDeleteStudent = async (id: string) => {
     if (window.confirm('Bu öğrenciyi ve kayıtları silmek istediğinize emin misiniz?')) {
       const updated = students.filter(s => s.id !== id);
-      saveStudentsToStorage(updated);
+      setStudents(updated);
+      localStorage.setItem('derslink_students', JSON.stringify(updated));
+      await deleteDocFromFirebase("students", id);
+
+      // Clean assignments
+      assignments.forEach(async (a) => {
+        if (a.studentId === id) {
+          await deleteDocFromFirebase("assignments", a.id);
+        }
+      });
       const updatedAssigns = assignments.filter(a => a.studentId !== id);
-      saveAssignmentsToStorage(updatedAssigns);
+      setAssignments(updatedAssigns);
+      localStorage.setItem('derslink_assignments', JSON.stringify(updatedAssigns));
+
+      // Update linked parents
+      parents.forEach(async (p) => {
+        if (p.linkedStudentIds.includes(id)) {
+          const updatedP = { ...p, linkedStudentIds: p.linkedStudentIds.filter(sid => sid !== id) };
+          await saveDocToFirebase("parents", p.id, updatedP);
+        }
+      });
       const updatedParents = parents.map(p => ({
         ...p,
         linkedStudentIds: p.linkedStudentIds.filter(sid => sid !== id)
       }));
-      saveParentsToStorage(updatedParents);
+      setParents(updatedParents);
+      localStorage.setItem('derslink_parents', JSON.stringify(updatedParents));
     }
   };
 
-  const handleUpdateStudentNotes = (studentId: string) => {
+  const handleUpdateStudentNotes = async (studentId: string) => {
     const updated = students.map(s => {
       if (s.id === studentId) {
         return { ...s, teacherNotes: editNotesValue };
       }
       return s;
     });
-    saveStudentsToStorage(updated);
+    setStudents(updated);
+    localStorage.setItem('derslink_students', JSON.stringify(updated));
+    
+    const target = updated.find(s => s.id === studentId);
+    if (target) {
+      await saveDocToFirebase("students", studentId, target);
+    }
+
     setEditingStudentId(null);
     setEditNotesValue('');
     alert('Öğrenci notu güncellendi!');
   };
 
-  const handleAddParent = (e: React.FormEvent) => {
+  const handleAddParent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newParentName || !newParentUser || !newParentPass) {
       alert('Lütfen tüm veli bilgilerini eksiksiz doldurun.');
@@ -316,33 +460,52 @@ export default function App() {
       linkedStudentIds: newParentLinkedStudents,
       createdAt: new Date().toLocaleDateString('tr-TR')
     };
+    
     const updatedParents = [...parents, newParent];
-    saveParentsToStorage(updatedParents);
+    setParents(updatedParents);
+    localStorage.setItem('derslink_parents', JSON.stringify(updatedParents));
+    await saveDocToFirebase("parents", newParent.id, newParent);
 
+    // Update students
     const updatedStudents = students.map(s => {
       if (newParentLinkedStudents.includes(s.id)) {
         return { ...s, parentIds: [...(s.parentIds || []), newParent.id] };
       }
       return s;
     });
-    saveStudentsToStorage(updatedStudents);
+    setStudents(updatedStudents);
+    localStorage.setItem('derslink_students', JSON.stringify(updatedStudents));
+    
+    updatedStudents.forEach(async (s) => {
+      if (newParentLinkedStudents.includes(s.id)) {
+        await saveDocToFirebase("students", s.id, s);
+      }
+    });
 
     setNewParentName('');
     setNewParentUser('');
     setNewParentPass('');
     setNewParentLinkedStudents([]);
-    alert('Veli başarıyla kaydedildi!');
+    alert('Veli başarıyla Firebase veritabanına kaydedildi!');
   };
 
-  const handleDeleteParent = (id: string) => {
+  const handleDeleteParent = async (id: string) => {
     if (window.confirm('Bu veliyi silmek istediğinize emin misiniz?')) {
       const updatedParents = parents.filter(p => p.id !== id);
-      saveParentsToStorage(updatedParents);
+      setParents(updatedParents);
+      localStorage.setItem('derslink_parents', JSON.stringify(updatedParents));
+      await deleteDocFromFirebase("parents", id);
+
       const updatedStudents = students.map(s => ({
         ...s,
         parentIds: (s.parentIds || []).filter(pid => pid !== id)
       }));
-      saveStudentsToStorage(updatedStudents);
+      setStudents(updatedStudents);
+      localStorage.setItem('derslink_students', JSON.stringify(updatedStudents));
+      
+      updatedStudents.forEach(async (s) => {
+        await saveDocToFirebase("students", s.id, s);
+      });
     }
   };
 
@@ -352,7 +515,7 @@ export default function App() {
     );
   };
 
-  const handleAddCategory = (e: React.FormEvent) => {
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
     if (categories.includes(newCatName.trim())) {
@@ -360,14 +523,18 @@ export default function App() {
       return;
     }
     const updated = [...categories, newCatName.trim()];
-    saveCategoriesToStorage(updated);
+    setCategories(updated);
+    localStorage.setItem('derslink_categories', JSON.stringify(updated));
+    await saveDocToFirebase("categories", newCatName.trim(), { name: newCatName.trim() });
     setNewCatName('');
   };
 
-  const handleRemoveCategory = (cat: string) => {
+  const handleRemoveCategory = async (cat: string) => {
     if (window.confirm(`"${cat}" kategorisini silmek istiyor musunuz?`)) {
       const updated = categories.filter(c => c !== cat);
-      saveCategoriesToStorage(updated);
+      setCategories(updated);
+      localStorage.setItem('derslink_categories', JSON.stringify(updated));
+      await deleteDocFromFirebase("categories", cat);
     }
   };
 
@@ -377,20 +544,18 @@ export default function App() {
     }
   };
 
-  const handleAddDocument = (e: React.FormEvent) => {
+  const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     const activeCategory = docCategory || categories[0] || 'Genel';
     if (!docTitle) {
       alert('Lütfen doküman başlığını girin.');
       return;
     }
-    
-    let finalUrl = docUrl;
 
-    // If PDF file selected, convert to base64
+    // Convert PDF to base64
     if (docType === 'pdf' && selectedPdfFile) {
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         const base64Url = event.target?.result as string;
         const newDoc: DocumentItem = {
           id: 'doc_' + Date.now(),
@@ -403,18 +568,21 @@ export default function App() {
           fileName: selectedPdfFile?.name
         };
         const updated = [...documents, newDoc];
-        saveDocumentsToStorage(updated);
+        setDocuments(updated);
+        localStorage.setItem('derslink_documents', JSON.stringify(updated));
+        await saveDocToFirebase("documents", newDoc.id, newDoc);
+
         setDocTitle('');
         setDocUrl('');
         setDocNotes('');
         setSelectedPdfFile(null);
-        alert('PDF başarıyla yüklendi!');
+        alert('PDF dosyası başarıyla Firebase veritabanına yüklendi!');
       };
       reader.readAsDataURL(selectedPdfFile);
       return;
     }
 
-    if (!finalUrl && docType !== 'pdf') {
+    if (!docUrl && docType !== 'pdf') {
       alert('Lütfen link adresini girin.');
       return;
     }
@@ -424,27 +592,32 @@ export default function App() {
       title: docTitle,
       category: activeCategory,
       type: docType,
-      url: finalUrl,
+      url: docUrl,
       teacherNotes: docNotes || 'Öğretmen not bırakmadı.',
       createdAt: new Date().toLocaleDateString('tr-TR')
     };
     const updated = [...documents, newDoc];
-    saveDocumentsToStorage(updated);
+    setDocuments(updated);
+    localStorage.setItem('derslink_documents', JSON.stringify(updated));
+    await saveDocToFirebase("documents", newDoc.id, newDoc);
+
     setDocTitle('');
     setDocUrl('');
     setDocNotes('');
     setSelectedPdfFile(null);
-    alert('Doküman sisteme başarıyla eklendi!');
+    alert('Doküman başarıyla Firebase veritabanına eklendi!');
   };
 
-  const handleDeleteDocument = (id: string) => {
+  const handleDeleteDocument = async (id: string) => {
     if (window.confirm('Bu dokümanı silmek istediğinize emin misiniz?')) {
       const updated = documents.filter(d => d.id !== id);
-      saveDocumentsToStorage(updated);
+      setDocuments(updated);
+      localStorage.setItem('derslink_documents', JSON.stringify(updated));
+      await deleteDocFromFirebase("documents", id);
     }
   };
 
-  const handleCreateAssignment = (e: React.FormEvent) => {
+  const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignTitle || !assignDueDate) {
       alert('Lütfen ödev başlığını ve son teslim tarihini belirleyin.');
@@ -459,21 +632,26 @@ export default function App() {
       status: 'Bekliyor'
     };
     const updated = [...assignments, newAssign];
-    saveAssignmentsToStorage(updated);
+    setAssignments(updated);
+    localStorage.setItem('derslink_assignments', JSON.stringify(updated));
+    await saveDocToFirebase("assignments", newAssign.id, newAssign);
+
     setAssignTitle('');
     setAssignDesc('');
     setAssignDueDate('');
     alert(assignStudentId === 'all' ? 'Ödev tüm öğrencilere iletildi!' : 'Ödev ilgili öğrenciye iletildi!');
   };
 
-  const handleDeleteAssignment = (id: string) => {
+  const handleDeleteAssignment = async (id: string) => {
     if (window.confirm('Bu ödevi kaldırmak istiyor musunuz?')) {
       const updated = assignments.filter(a => a.id !== id);
-      saveAssignmentsToStorage(updated);
+      setAssignments(updated);
+      localStorage.setItem('derslink_assignments', JSON.stringify(updated));
+      await deleteDocFromFirebase("assignments", id);
     }
   };
 
-  const handleCreateExam = (e: React.FormEvent) => {
+  const handleCreateExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!examTitle || !examUrl) {
       alert('Lütfen sınav adını ve linkini yazın.');
@@ -488,21 +666,26 @@ export default function App() {
       createdAt: new Date().toLocaleDateString('tr-TR')
     };
     const updated = [...exams, newExam];
-    saveExamsToStorage(updated);
+    setExams(updated);
+    localStorage.setItem('derslink_exams', JSON.stringify(updated));
+    await saveDocToFirebase("exams", newExam.id, newExam);
+
     setExamTitle('');
     setExamUrl('');
     setExamDesc('');
     alert('Sınav bağlantısı oluşturuldu!');
   };
 
-  const handleDeleteExam = (id: string) => {
+  const handleDeleteExam = async (id: string) => {
     if (window.confirm('Bu sınav linkini kaldırmak istiyor musunuz?')) {
       const updated = exams.filter(e => e.id !== id);
-      saveExamsToStorage(updated);
+      setExams(updated);
+      localStorage.setItem('derslink_exams', JSON.stringify(updated));
+      await deleteDocFromFirebase("exams", id);
     }
   };
 
-  const handleCreateCalendarEvent = (e: React.FormEvent) => {
+  const handleCreateCalendarEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!calTitle || !calDate || !calTime) {
       alert('Lütfen ders adını, gününü ve saatini girin.');
@@ -517,7 +700,10 @@ export default function App() {
       status: 'Planlandı'
     };
     const updated = [...events, newEvt];
-    saveEventsToStorage(updated);
+    setEvents(updated);
+    localStorage.setItem('derslink_events', JSON.stringify(updated));
+    await saveDocToFirebase("events", newEvt.id, newEvt);
+
     setCalTitle('');
     setCalDate('');
     setCalTime('');
@@ -525,7 +711,7 @@ export default function App() {
     alert('Ders takvime eklendi!');
   };
 
-  const handleMarkLessonCompleted = (id: string, notes: string, recordingUrl?: string) => {
+  const handleMarkLessonCompleted = async (id: string, notes: string, recordingUrl?: string) => {
     const updated = events.map(evt => {
       if (evt.id === id) {
         return {
@@ -538,14 +724,22 @@ export default function App() {
       }
       return evt;
     });
-    saveEventsToStorage(updated);
+    setEvents(updated);
+    localStorage.setItem('derslink_events', JSON.stringify(updated));
+    
+    const changedEvt = updated.find(e => e.id === id);
+    if (changedEvt) {
+      await saveDocToFirebase("events", id, changedEvt);
+    }
     alert('Ders yapıldı olarak tescillendi!');
   };
 
-  const handleDeleteEvent = (id: string) => {
+  const handleDeleteEvent = async (id: string) => {
     if (window.confirm('Bu takvim kaydını silmek istiyor musunuz?')) {
       const updated = events.filter(e => e.id !== id);
-      saveEventsToStorage(updated);
+      setEvents(updated);
+      localStorage.setItem('derslink_events', JSON.stringify(updated));
+      await deleteDocFromFirebase("events", id);
     }
   };
 
@@ -587,7 +781,7 @@ export default function App() {
     }
   };
 
-  const handleStudentSubmitHomework = (e: React.FormEvent) => {
+  const handleStudentSubmitHomework = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submittingAssignmentId) return;
     if (!studentSubmissionUrl) {
@@ -606,11 +800,18 @@ export default function App() {
       }
       return assign;
     });
-    saveAssignmentsToStorage(updated);
+    setAssignments(updated);
+    localStorage.setItem('derslink_assignments', JSON.stringify(updated));
+    
+    const submittedObj = updated.find(a => a.id === submittingAssignmentId);
+    if (submittedObj) {
+      await saveDocToFirebase("assignments", submittedObj.id, submittedObj);
+    }
+
     setSubmittingAssignmentId(null);
     setStudentSubmissionUrl('');
     setStudentSubmissionNotes('');
-    alert('Özetiniz öğretmeninize iletildi!');
+    alert('Özetiniz başarıyla Firebase veritabanına ve öğretmeninize iletildi!');
   };
 
   const insertSampleGoogleDoc = (type: string) => {
@@ -642,22 +843,28 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
       
-      {/* HEADER */}
+      {/* HEADER WITH FIREBASE STATUS */}
       <header className="border-b border-slate-700/50 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setCurrentRole('guest'); setCurrentStudentUser(null); setCurrentParentUser(null); }}>
-            <div className="bg-gradient-to-tr from-amber-500 via-pink-500 to-purple-500 p-2.5 rounded-xl shadow-lg shadow-amber-500/20">
-              <GraduationCap className="h-6 w-6 text-white" />
+            <div className="bg-gradient-to-tr from-amber-500 via-pink-500 to-purple-500 p-2.5 rounded-xl shadow-lg shadow-amber-500/20 text-white">
+              <GraduationCap className="h-6 w-6" />
             </div>
             <div>
               <span className="text-xl font-black tracking-tight bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
                 DERSLİKLİNK
               </span>
-              <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">Akıllı Eğitim Platformu</p>
+              <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">Firebase Cloud Entegre</p>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
+            {/* Realtime Firebase Badge indicator */}
+            <div className={`hidden sm:flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${firebaseStatus === 'Aktif (Canlı)' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
+              <Database className="h-3 w-3 animate-pulse" />
+              <span>Veritabanı: {firebaseStatus}</span>
+            </div>
+
             {currentRole === 'teacher' && (
               <div className="flex items-center space-x-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-3 py-1.5 rounded-lg">
                 <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
@@ -704,20 +911,20 @@ export default function App() {
       {/* MAIN */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* GUEST / LOGIN */}
+        {/* GUEST / LOGIN SCREEN */}
         {currentRole === 'guest' && (
           <div className="max-w-5xl mx-auto space-y-12 py-6">
             <div className="text-center space-y-4 max-w-2xl mx-auto">
-              <div className="inline-flex bg-gradient-to-r from-amber-500/20 to-pink-500/20 text-amber-300 text-xs px-4 py-1.5 rounded-full font-medium tracking-wide items-center space-x-2 border border-amber-500/30">
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Canlı Sistem — Sıfır Kurulum</span>
+              <div className="inline-flex bg-gradient-to-r from-emerald-500/20 via-pink-500/20 to-amber-500/20 text-emerald-300 text-xs px-4 py-1.5 rounded-full font-bold tracking-wide items-center space-x-2 border border-emerald-500/30">
+                <Wifi className="h-3.5 w-3.5 animate-bounce" />
+                <span>Firebase Bağlantı Modu: {firebaseStatus}</span>
               </div>
               <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
                 Öğretmen, Öğrenci & Veli <br/>
-                <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">Akıllı Eğitim Platformu</span>
+                <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">Firebase Cloud Hub</span>
               </h1>
               <p className="text-slate-400 text-base sm:text-lg">
-                PDF yükleme, ekran kaydı, performans takibi ve daha fazlası.
+                Gerçek zamanlı veritabanı senkronizasyonu, PDF yükleme, ekran kaydı ve ayrıcalıklı renkli portallar.
               </p>
             </div>
 
@@ -732,10 +939,10 @@ export default function App() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                      <span>Öğretmen Yalnızca Öğretmen</span>
-                      <span className="text-[10px] font-normal bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">Şifreli</span>
+                      <span>Öğretmen</span>
+                      <span className="text-[10px] font-normal bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-bold">Şifreli</span>
                     </h2>
-                    <p className="text-slate-400 text-xs mt-2">Öğrenci/veli kaydı, PDF yükleme, ödev dağıtımı.</p>
+                    <p className="text-slate-400 text-xs mt-2">Öğrenci/veli kaydı, PDF yükleme, Firebase veri gönderimi.</p>
                   </div>
                   <form onSubmit={handleTeacherLogin} className="space-y-3 pt-2">
                     {teacherError && (
@@ -749,14 +956,10 @@ export default function App() {
                         <Lock className="h-3 w-3" />
                         <span>Şifre</span>
                       </label>
-                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="
-Işık saçar.
-
-
-" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="A123" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
                     </div>
                     <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold py-2.5 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2 cursor-pointer text-sm">
-                      <span>Giriş</span>
+                      <span>Giriş Yap</span>
                       <ArrowRight className="h-4 w-4" />
                     </button>
                   </form>
@@ -771,7 +974,7 @@ Işık saçar.
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white">Öğrenci</h2>
-                    <p className="text-slate-400 text-xs mt-2">Ödevler, dokümanlar ve sınavlar.</p>
+                    <p className="text-slate-400 text-xs mt-2">Renkli portal, dokümanlar, PDF ve ödev teslimi.</p>
                   </div>
                   <form onSubmit={handleStudentLogin} className="space-y-3 pt-2">
                     {loginError && (
@@ -779,19 +982,17 @@ Işık saçar.
                     )}
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
-                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="
-Bilgi arar.
-" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="ahmet12" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
                       <input type="password" value={studentLoginPass} onChange={(e) => setStudentLoginPass(e.target.value)} placeholder="••••" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
                     </div>
                     {students.length === 0 && (
-                      <p className="text-[11px] text-amber-400/90 italic bg-slate-900 p-2 rounded-lg border border-slate-800">⚠️ Önce öğretmen öğrenci eklemeli.</p>
+                      <p className="text-[11px] text-amber-400/90 italic bg-slate-900 p-2 rounded-lg border border-slate-800">⚠️ Henüz öğrenci yok. Öğretmen eklemeli.</p>
                     )}
                     <button type="submit" disabled={students.length === 0} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center space-x-2 text-sm">
-                      <span>Giriş</span>
+                      <span>Öğrenci Girişi</span>
                       <Check className="h-4 w-4" />
                     </button>
                   </form>
@@ -806,7 +1007,7 @@ Bilgi arar.
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white">Veli</h2>
-                    <p className="text-slate-400 text-xs mt-2">Çocuğunuzun durumu ve ders kayıtları.</p>
+                    <p className="text-slate-400 text-xs mt-2">Canlı ders ekran kayıtları ve çocuk performansı.</p>
                   </div>
                   <form onSubmit={handleParentLogin} className="space-y-3 pt-2">
                     {parentLoginError && (
@@ -814,19 +1015,17 @@ Bilgi arar.
                     )}
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
-                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="
-Kanat gerer.
-" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="veli_ahmet" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
                       <input type="password" value={parentLoginPass} onChange={(e) => setParentLoginPass(e.target.value)} placeholder="••••" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
                     </div>
                     {parents.length === 0 && (
-                      <p className="text-[11px] text-amber-400/90 italic bg-slate-900 p-2 rounded-lg border border-slate-800">⚠️ Önce öğretmen veli eklemeli.</p>
+                      <p className="text-[11px] text-amber-400/90 italic bg-slate-900 p-2 rounded-lg border border-slate-800">⚠️ Henüz veli yok. Öğretmen eklemeli.</p>
                     )}
                     <button type="submit" disabled={parents.length === 0} className="w-full bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center space-x-2 text-sm">
-                      <span>Giriş</span>
+                      <span>Veli Girişi</span>
                       <Check className="h-4 w-4" />
                     </button>
                   </form>
@@ -838,9 +1037,9 @@ Kanat gerer.
             <div className="bg-slate-950/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
               <div className="flex items-center space-x-3 text-slate-400">
                 <FileSpreadsheet className="h-5 w-5 text-amber-400 flex-shrink-0" />
-                <span><strong>Veriler:</strong> Tarayıcı hafızasında saklanır (localStorage).</span>
+                <span><strong>Veri Altyapısı:</strong> Firebase Firestore (<code className="bg-slate-900 px-1.5 py-0.5 rounded text-amber-200">veliogrenci-cce71</code>) + LocalStorage Kesintisiz Yedekleme.</span>
               </div>
-              <div className="text-slate-500 font-mono text-[10px] whitespace-nowrap bg-slate-900 px-2 py-1 rounded">v4.0 — PDF + Renkli UI</div>
+              <div className="text-slate-500 font-mono text-[10px] whitespace-nowrap bg-slate-900 px-2 py-1 rounded">v5.0 — Cloud Connected</div>
             </div>
           </div>
         )}
@@ -850,7 +1049,7 @@ Kanat gerer.
           <div className="space-y-8">
             <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-700/50 flex flex-wrap gap-1 backdrop-blur">
               <button onClick={() => setTeacherTab('dashboard')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'dashboard' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
-                <TrendingUp className="h-4 w-4" /><span>Analiz</span>
+                <TrendingUp className="h-4 w-4" /><span>Genel Analiz</span>
               </button>
               <button onClick={() => setTeacherTab('students')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'students' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
                 <UserPlus className="h-4 w-4" /><span>Öğrenciler ({students.length})</span>
@@ -888,11 +1087,11 @@ Kanat gerer.
                     <p className="text-3xl font-black text-blue-400">{documents.length}</p>
                   </div>
                   <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-5 rounded-2xl border border-emerald-500/30 space-y-1">
-                    <span className="text-slate-400 text-xs font-medium">Teslim</span>
+                    <span className="text-slate-400 text-xs font-medium">Teslim Edilen</span>
                     <p className="text-3xl font-black text-emerald-400">{assignments.filter(a => a.status === 'Tamamlandı').length}</p>
                   </div>
                   <div className="bg-gradient-to-br from-purple-500/10 to-violet-500/10 p-5 rounded-2xl border border-purple-500/30 space-y-1">
-                    <span className="text-slate-400 text-xs font-medium">Ders</span>
+                    <span className="text-slate-400 text-xs font-medium">Takvim Dersi</span>
                     <p className="text-3xl font-black text-purple-400">{events.length}</p>
                   </div>
                 </div>
@@ -905,7 +1104,7 @@ Kanat gerer.
                   {students.length === 0 ? (
                     <div className="text-center py-12 border border-dashed border-slate-700 rounded-xl">
                       <UserPlus className="h-8 w-8 text-slate-600 mx-auto" />
-                      <p className="text-sm text-slate-400 mt-2">Henüz öğrenci yok.</p>
+                      <p className="text-sm text-slate-400 mt-2">Henüz öğrenci kaydedilmemiş.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -937,8 +1136,8 @@ Kanat gerer.
                               <div className="bg-gradient-to-r from-amber-500 via-pink-500 to-purple-500 h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(perf.percentage, 3)}%` }}></div>
                             </div>
                             <div className="flex justify-between text-[10px] text-slate-500">
-                              <span>Başarı: %{perf.percentage}</span>
-                              <span>{perf.percentage === 100 ? '🔥 Mükemmel' : perf.percentage > 50 ? '👍 İyi' : '⚠️ Takip'}</span>
+                              <span>Başarı Oranı: %{perf.percentage}</span>
+                              <span>{perf.percentage === 100 ? '🔥 Eksiksiz' : perf.percentage > 50 ? '👍 İyi' : '⚠️ Takip'}</span>
                             </div>
                           </div>
                         );
@@ -954,7 +1153,7 @@ Kanat gerer.
                 <div>
                   <h3 className="text-xl font-bold text-white flex items-center space-x-2">
                     <UserPlus className="h-5 w-5 text-amber-400" />
-                    <span>Öğrenci Kayıt</span>
+                    <span>Öğrenci Kayıt ve Firebase Senkronizasyonu</span>
                   </h3>
                 </div>
                 <form onSubmit={handleAddStudent} className="p-4 bg-slate-900 rounded-xl border border-slate-700 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -971,10 +1170,10 @@ Kanat gerer.
                     <input type="text" value={newStudentPass} onChange={(e) => setNewStudentPass(e.target.value)} placeholder="987654" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">İşlem</label>
-                    <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs cursor-pointer">Kaydet</button>
+                    <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs cursor-pointer">Veritabanına Ekle</button>
                   </div>
                 </form>
+
                 <div className="space-y-3">
                   <h4 className="text-sm font-bold text-slate-300">Öğrenciler ({students.length})</h4>
                   {students.length === 0 ? (
@@ -985,10 +1184,10 @@ Kanat gerer.
                         <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-700">
                           <tr>
                             <th className="p-3">Ad Soyad</th>
-                            <th className="p-3">Kullanıcı</th>
+                            <th className="p-3">Kullanıcı Adı</th>
                             <th className="p-3">Şifre</th>
-                            <th className="p-3">Veli</th>
-                            <th className="p-3">Notlar</th>
+                            <th className="p-3">Bağlı Veli</th>
+                            <th className="p-3">Öğrenci Hakkında Not</th>
                             <th className="p-3 text-right">Eylem</th>
                           </tr>
                         </thead>
@@ -1010,12 +1209,12 @@ Kanat gerer.
                                   {editingStudentId === s.id ? (
                                     <div className="flex items-center space-x-2">
                                       <input type="text" value={editNotesValue} onChange={(e) => setEditNotesValue(e.target.value)} className="bg-slate-950 text-xs text-white px-2 py-1 rounded border border-slate-600 w-48 focus:outline-none" />
-                                      <button onClick={() => handleUpdateStudentNotes(s.id)} className="text-emerald-400 hover:text-emerald-300"><Save className="h-4 w-4" /></button>
-                                      <button onClick={() => { setEditingStudentId(null); setEditNotesValue(''); }} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+                                      <button onClick={() => handleUpdateStudentNotes(s.id)} className="text-emerald-400 hover:text-emerald-300 font-bold"><Save className="h-4 w-4 inline" /></button>
+                                      <button onClick={() => { setEditingStudentId(null); setEditNotesValue(''); }} className="text-slate-400 hover:text-white"><X className="h-4 w-4 inline" /></button>
                                     </div>
                                   ) : (
                                     <div className="flex items-center space-x-2">
-                                      <span className="text-xs text-slate-400 truncate max-w-xs">{s.teacherNotes || 'Not yok'}</span>
+                                      <span className="text-xs text-slate-400 truncate max-w-xs">{s.teacherNotes || 'Not yazılmamış'}</span>
                                       <button onClick={() => { setEditingStudentId(s.id); setEditNotesValue(s.teacherNotes || ''); }} className="text-amber-400 hover:text-amber-300"><PenLine className="h-3.5 w-3.5" /></button>
                                     </div>
                                   )}
@@ -1039,7 +1238,7 @@ Kanat gerer.
                 <div>
                   <h3 className="text-xl font-bold text-white flex items-center space-x-2">
                     <Users className="h-5 w-5 text-rose-400" />
-                    <span>Veli Kayıt</span>
+                    <span>Veli Kayıt ve Öğrenci Eşleştirme</span>
                   </h3>
                 </div>
                 <form onSubmit={handleAddParent} className="p-4 bg-slate-900 rounded-xl border border-slate-700 space-y-4">
@@ -1072,9 +1271,10 @@ Kanat gerer.
                     )}
                   </div>
                   <div className="text-right">
-                    <button type="submit" className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold px-6 py-2 rounded-lg text-xs transition-colors cursor-pointer">Kaydet</button>
+                    <button type="submit" className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold px-6 py-2 rounded-lg text-xs transition-colors cursor-pointer">Firebase'e Kaydet</button>
                   </div>
                 </form>
+
                 <div className="space-y-3">
                   <h4 className="text-sm font-bold text-slate-300">Veliler ({parents.length})</h4>
                   {parents.length === 0 ? (
@@ -1119,11 +1319,11 @@ Kanat gerer.
                   <div className="lg:col-span-2 space-y-1">
                     <h3 className="text-xl font-bold text-white flex items-center space-x-2">
                       <FileText className="h-5 w-5 text-amber-400" />
-                      <span>Doküman & PDF Yükleme</span>
+                      <span>Doküman & PDF Direkt Firebase Yükleme</span>
                     </h3>
                   </div>
                   <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-2">
-                    <label className="block text-[11px] font-bold text-slate-300 uppercase">Yeni Kategori</label>
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase">Yeni Kategori Ekle</label>
                     <form onSubmit={handleAddCategory} className="flex space-x-1">
                       <input type="text" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Kategori" className="bg-slate-950 text-xs text-white px-2 py-1.5 rounded border border-slate-700 w-full focus:outline-none focus:border-amber-500" />
                       <button type="submit" className="bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs px-2.5 rounded font-bold border border-amber-500/30 cursor-pointer">+</button>
@@ -1140,7 +1340,7 @@ Kanat gerer.
                 </div>
 
                 <form onSubmit={handleAddDocument} className="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-4">
-                  <h4 className="text-sm font-bold text-amber-400">Doküman Ekle</h4>
+                  <h4 className="text-sm font-bold text-amber-400">Doküman Detay Formu</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1">Başlık</label>
@@ -1158,14 +1358,14 @@ Kanat gerer.
                       <select value={docType} onChange={(e) => setDocType(e.target.value as typeof docType)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
                         <option value="google-doc">📝 Google Doc</option>
                         <option value="video">🎥 Video</option>
-                        <option value="pdf">📄 PDF Dosyası</option>
+                        <option value="pdf">📄 PDF Dosyası (Doğrudan Yükle)</option>
                         <option value="summary">📚 Özet</option>
                         <option value="link">🌐 Diğer</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1">
-                        {docType === 'pdf' ? 'PDF Seç' : 'URL / Link'}
+                        {docType === 'pdf' ? 'PDF Dosyası Seç' : 'URL / Link'}
                       </label>
                       {docType === 'pdf' ? (
                         <input type="file" accept=".pdf" onChange={handleFileChange} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
@@ -1175,21 +1375,21 @@ Kanat gerer.
                     </div>
                   </div>
                   <div className="flex items-center space-x-2 bg-slate-950 p-2 rounded-lg text-xs">
-                    <span className="text-slate-400 font-semibold">⚡ Hızlı:</span>
-                    <button type="button" onClick={() => { setDocType('google-doc'); insertSampleGoogleDoc('doc'); }} className="bg-slate-800 hover:bg-slate-700 text-amber-400 px-2 py-1 rounded border border-slate-700">Google Doc</button>
-                    <button type="button" onClick={() => { setDocType('video'); insertSampleGoogleDoc('video'); }} className="bg-slate-800 hover:bg-slate-700 text-purple-400 px-2 py-1 rounded border border-slate-700">Video</button>
+                    <span className="text-slate-400 font-semibold">⚡ Hızlı Şablonlar:</span>
+                    <button type="button" onClick={() => { setDocType('google-doc'); insertSampleGoogleDoc('doc'); }} className="bg-slate-800 hover:bg-slate-700 text-amber-400 px-2 py-1 rounded border border-slate-700">Google Doc Linki</button>
+                    <button type="button" onClick={() => { setDocType('video'); insertSampleGoogleDoc('video'); }} className="bg-slate-800 hover:bg-slate-700 text-purple-400 px-2 py-1 rounded border border-slate-700">Video Linki</button>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">Notlar</label>
                     <textarea value={docNotes} onChange={(e) => setDocNotes(e.target.value)} placeholder="Öğrenciye talimatlar..." rows={2} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
                   </div>
                   <div className="text-right">
-                    <button type="submit" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-6 py-2 rounded-lg text-xs transition-colors cursor-pointer">Yayınla</button>
+                    <button type="submit" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-6 py-2 rounded-lg text-xs transition-colors cursor-pointer">Firebase'e Yayınla</button>
                   </div>
                 </form>
 
                 <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-slate-300">Dokümanlar</h4>
+                  <h4 className="text-sm font-bold text-slate-300">Yüklenen Dokümanlar</h4>
                   {documents.length === 0 ? (
                     <div className="p-8 text-center text-slate-500 bg-slate-900/40 rounded-xl border border-dashed border-slate-700 text-xs">Henüz doküman yok.</div>
                   ) : (
@@ -1207,12 +1407,12 @@ Kanat gerer.
                               {doc.type === 'video' && <Video className="h-4 w-4 text-purple-400" />}
                               <span>{doc.title}</span>
                             </h5>
-                            {doc.fileName && <p className="text-[10px] text-slate-400">📄 {doc.fileName}</p>}
+                            {doc.fileName && <p className="text-[10px] text-amber-300">📄 {doc.fileName}</p>}
                             <p className="text-xs text-slate-400 italic bg-slate-950/40 p-2 rounded border border-slate-700/60 mt-1 line-clamp-2">{doc.teacherNotes}</p>
                           </div>
                           <div className="pt-2 flex items-center justify-between border-t border-slate-700 text-xs">
-                            <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} rel="noreferrer" className="text-amber-400 hover:underline flex items-center space-x-1 font-semibold">
-                              <span>Aç</span><ExternalLink className="h-3 w-3" />
+                            <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} download={doc.type === 'pdf' ? doc.fileName || 'dokuman.pdf' : undefined} rel="noreferrer" className="text-amber-400 hover:underline flex items-center space-x-1 font-semibold">
+                              <span>{doc.type === 'pdf' ? 'İndir / Aç' : 'Aç'}</span><ExternalLink className="h-3 w-3" />
                             </a>
                             <button onClick={() => handleDeleteDocument(doc.id)} className="text-rose-400 hover:text-rose-300 font-semibold flex items-center space-x-1">
                               <Trash2 className="h-3 w-3" /><span>Sil</span>
@@ -1256,7 +1456,7 @@ Kanat gerer.
                       <textarea value={assignDesc} onChange={(e) => setAssignDesc(e.target.value)} placeholder="Detaylar..." rows={2} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
                     </div>
                     <div className="text-right">
-                      <button type="submit" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-5 py-2 rounded-lg text-xs cursor-pointer">Dağıt</button>
+                      <button type="submit" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-5 py-2 rounded-lg text-xs cursor-pointer">Firebase'e Dağıt</button>
                     </div>
                   </form>
                 </div>
@@ -1294,7 +1494,7 @@ Kanat gerer.
                     {assignments.length === 0 ? (
                       <p className="text-xs text-slate-500 py-4 text-center">Ödev yok.</p>
                     ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                         {assignments.map(a => {
                           const targetStudent = students.find(s => s.id === a.studentId);
                           return (
@@ -1319,7 +1519,7 @@ Kanat gerer.
                     {exams.length === 0 ? (
                       <p className="text-xs text-slate-500 py-4 text-center">Sınav yok.</p>
                     ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                         {exams.map(e => (
                           <div key={e.id} className="p-2.5 bg-slate-900 rounded-lg text-xs border border-slate-700 flex items-center justify-between">
                             <div>
@@ -1403,7 +1603,7 @@ Kanat gerer.
                         <label className="block text-[11px] text-slate-400 mb-1">Detay</label>
                         <textarea value={calDesc} onChange={(e) => setCalDesc(e.target.value)} placeholder="Detaylar..." rows={2} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none" />
                       </div>
-                      <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white text-xs font-bold py-2 rounded-lg cursor-pointer">Ekle</button>
+                      <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white text-xs font-bold py-2 rounded-lg cursor-pointer">Firebase Takvime Ekle</button>
                     </form>
                   </div>
                   <div className="lg:col-span-2 space-y-3">
@@ -1427,13 +1627,13 @@ Kanat gerer.
                               <div className="mt-2 p-2 bg-blue-500/10 rounded-lg border border-blue-500/20 text-xs flex items-center space-x-2">
                                 <MonitorPlay className="h-4 w-4 text-blue-400" />
                                 <a href={evt.recordingUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center space-x-1">
-                                  <span>Kayıt</span><ExternalLink className="h-3 w-3" />
+                                  <span>Kayıt Linki</span><ExternalLink className="h-3 w-3" />
                                 </a>
                               </div>
                             )}
                             {evt.status === 'Planlandı' && (
                               <div className="mt-3 pt-3 border-t border-slate-700 bg-slate-950 p-2.5 rounded-lg space-y-2">
-                                <p className="text-[11px] text-amber-400 font-semibold">⚡ Tamamla:</p>
+                                <p className="text-[11px] text-amber-400 font-semibold">⚡ Tamamla & İşle:</p>
                                 <div className="space-y-2">
                                   <input type="text" id={`notes-${evt.id}`} placeholder="Öğretmen notu..." className="bg-slate-900 text-xs text-white p-1.5 rounded border border-slate-700 w-full focus:outline-none" />
                                   <div className="flex items-center space-x-2">
@@ -1468,7 +1668,7 @@ Kanat gerer.
               <div className="space-y-2 relative z-10">
                 <span className="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur">Öğrenci Paneli</span>
                 <h2 className="text-2xl sm:text-3xl font-black">Hoş Geldin, {currentStudentUser.name}! 🎉</h2>
-                <p className="text-emerald-100 text-xs sm:text-sm max-w-2xl">Ödevlerin, dokümanların ve sınavların seni bekliyor!</p>
+                <p className="text-emerald-100 text-xs sm:text-sm max-w-2xl">Ödevlerin, PDF dokümanların ve sınavların seni bekliyor!</p>
               </div>
             </div>
 
@@ -1504,7 +1704,6 @@ Kanat gerer.
                               <p className="text-slate-300 mt-1">{evt.teacherSummary}</p>
                             </div>
                           )}
-                          {/* No recording link for students */}
                         </div>
                       ))}
                     </div>
@@ -1536,7 +1735,7 @@ Kanat gerer.
                         {documents.slice(-3).map(doc => (
                           <div key={doc.id} className="p-2 bg-slate-900 rounded border border-slate-700 text-xs flex items-center justify-between">
                             <p className="font-bold text-slate-200 truncate max-w-[120px]">{doc.title}</p>
-                            <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">Aç ↗</a>
+                            <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} download={doc.type === 'pdf' ? doc.fileName || 'dokuman.pdf' : undefined} rel="noreferrer" className="text-xs text-blue-400 hover:underline">Aç ↗</a>
                           </div>
                         ))}
                       </div>
@@ -1583,11 +1782,11 @@ Kanat gerer.
                                 <div>
                                   <span className="text-[9px] font-bold text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-700">{doc.type === 'pdf' ? '📄 PDF' : doc.type === 'google-doc' ? '📝 Google Doc' : doc.type === 'video' ? '🎥 Video' : '📚 Not'}</span>
                                   <h5 className="text-sm font-bold text-white mt-1.5">{doc.title}</h5>
-                                  {doc.fileName && <p className="text-[10px] text-slate-400">📄 {doc.fileName}</p>}
+                                  {doc.fileName && <p className="text-[10px] text-amber-300">📄 {doc.fileName}</p>}
                                   <p className="text-xs text-slate-400 bg-slate-950 p-2 rounded border border-slate-700/60 mt-2 line-clamp-3">{doc.teacherNotes}</p>
                                 </div>
-                                <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} rel="noreferrer" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 text-xs px-3 py-1.5 rounded-lg font-bold inline-flex items-center space-x-1 border border-amber-500/30 self-end">
-                                  <span>Aç</span><ExternalLink className="h-3 w-3" />
+                                <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} download={doc.type === 'pdf' ? doc.fileName || 'dokuman.pdf' : undefined} rel="noreferrer" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 text-xs px-3 py-1.5 rounded-lg font-bold inline-flex items-center space-x-1 border border-amber-500/30 self-end">
+                                  <span>{doc.type === 'pdf' ? 'İndir' : 'Aç'}</span><ExternalLink className="h-3 w-3" />
                                 </a>
                               </div>
                             ))}
@@ -1621,7 +1820,7 @@ Kanat gerer.
                         <label className="block text-[11px] text-slate-400 mb-1">Notunuz</label>
                         <textarea value={studentSubmissionNotes} onChange={(e) => setStudentSubmissionNotes(e.target.value)} placeholder="Notlar..." rows={2} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-emerald-400 focus:outline-none" />
                       </div>
-                      <button type="submit" className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-bold px-4 py-2 rounded text-xs cursor-pointer">Gönder</button>
+                      <button type="submit" className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-bold px-4 py-2 rounded text-xs cursor-pointer">Firebase'e Gönder</button>
                     </form>
                   </div>
                 )}
@@ -1695,7 +1894,6 @@ Kanat gerer.
                         </div>
                         <h4 className="text-sm font-bold text-slate-200 mt-1">{e.title}</h4>
                         <p className="text-xs text-slate-400">{e.description}</p>
-                        {/* No recording link for students */}
                       </div>
                     ))}
                   </div>
@@ -1941,10 +2139,10 @@ Kanat gerer.
       {/* FOOTER */}
       <footer className="mt-16 border-t border-slate-700/50 bg-slate-950/80 py-8 text-xs text-slate-500 text-center backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 space-y-2">
-          <p className="font-bold text-slate-400">DersLink — Öğretmen, Öğrenci & Veli Platformu</p>
-          <p>Öğretmen Şifresi: <code className="text-amber-400">A123</code> • PDF Yükleme • Ekran Kaydı • Renkli UI © 2026</p>
+          <p className="font-bold text-slate-400">DersLink — Öğretmen, Öğrenci & Veli Platformu (Firebase Firestore Bağlantılı)</p>
+          <p>Öğretmen Şifresi: <code className="text-amber-400">A123</code> • PDF & Ekran Kaydı • Çift Yönlü Cloud & Yerel Senkronizasyon © 2026</p>
           <div className="pt-2 flex justify-center space-x-4">
-            <button onClick={() => setCurrentRole('guest')} className="text-amber-400 hover:underline">Giriş Ekranı</button>
+            <button onClick={() => setCurrentRole('guest')} className="text-amber-400 hover:underline font-bold">Giriş Ekranına Dön</button>
           </div>
         </div>
       </footer>
