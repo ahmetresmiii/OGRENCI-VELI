@@ -920,8 +920,8 @@ export default function App() {
                 <span>Firebase Bağlantı Modu: {firebaseStatus}</span>
               </div>
               <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
-                Öğretmen, Öğrenci & Veli <br/>
-                <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">Firebase Cloud Hub</span>
+                DİJİTAL EĞİTİM PLATFORMU <br/>
+                <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">Sınıfım360</span>
               </h1>
               <p className="text-slate-400 text-base sm:text-lg">
                 Gerçek zamanlı veritabanı senkronizasyonu, PDF yükleme, ekran kaydı ve ayrıcalıklı renkli portallar.
