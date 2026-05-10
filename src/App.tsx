@@ -1,162 +1,206 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { 
-  Users, 
-  GraduationCap, 
+  UserPlus, 
   FileText, 
-  CheckCircle2, 
-  Clock, 
-  Search, 
-  Plus, 
   Calendar, 
-  ChevronRight, 
-  Settings, 
+  Clock, 
+  Trash2, 
+  ExternalLink, 
+  GraduationCap, 
+  Layers, 
+  Video, 
+  FileCheck, 
+  ClipboardList, 
+  TrendingUp, 
   LogOut, 
-  Menu, 
-  X,
-  LayoutDashboard,
-  BookOpen,
-  PieChart,
-  Video,
-  FileDown,
-  ExternalLink,
-  MessageSquare,
-  Bell,
-  MoreVertical,
-  Trash2,
-  Edit,
-  Save,
-  Check,
-  AlertCircle,
-  File,
-  Filter,
-  Monitor,
-  Download,
-  Upload,
-  Calendar as CalendarIcon,
-  User,
+  Check, 
+  ArrowRight,
+  CalendarDays,
+  FileSpreadsheet,
   Shield,
-  Briefcase,
-  Layers,
+  Users,
+  MonitorPlay,
+  Heart,
+  Lock,
+  AlertTriangle,
+  BarChart3,
   ChevronDown,
-  MoreHorizontal
+  ChevronUp,
+  FileUp,
+  Award,
+  Target,
+  BookOpen,
+  PenLine,
+  Save,
+  X,
+  Database,
+  Wifi
 } from 'lucide-react';
 
-// --- TYPES & INTERFACES ---
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyBqxSvtSrKLjb-0Yq91abjXhqPy8JIbSJs",
+  authDomain: "veliogrenci-cce71.firebaseapp.com",
+  projectId: "veliogrenci-cce71",
+  storageBucket: "veliogrenci-cce71.firebasestorage.app",
+  messagingSenderId: "1092640766125",
+  appId: "1:1092640766125:web:c3b7c7dc99606515946e24",
+  measurementId: "G-JQ5PGHB7K9"
+};
+
+// Initialize Firebase App & Firestore Database
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// --- DATA TYPE DEFINITIONS ---
 interface Student {
   id: string;
   name: string;
-  email: string;
-  avatar: string;
-  assignmentsCompleted: number;
-  gradeAverage: number;
-  lastActive: string;
+  username: string;
+  passwordHash: string;
+  avatarSeed: string;
+  createdAt: string;
+  parentIds: string[];
+  teacherNotes?: string;
 }
 
 interface Parent {
   id: string;
   name: string;
-  email: string;
+  username: string;
+  passwordHash: string;
   linkedStudentIds: string[];
+  createdAt: string;
 }
 
-interface Category {
-  id: string;
-  name: string;
-}
-
-interface Document {
+interface DocumentItem {
   id: string;
   title: string;
   category: string;
-  type: 'pdf' | 'video' | 'doc' | 'link';
+  type: 'google-doc' | 'video' | 'link' | 'summary' | 'pdf';
   url: string;
-  uploadDate: string;
-  isGoogleDoc?: boolean;
+  teacherNotes: string;
+  createdAt: string;
+  fileName?: string;
 }
 
 interface Assignment {
   id: string;
+  studentId: string;
   title: string;
-  category: string;
-  deadline: string;
-  status: 'active' | 'expired';
-  submissions: number;
-  totalStudents: number;
+  description: string;
+  dueDate: string;
+  status: 'Bekliyor' | 'Tamamlandı';
+  studentNotes?: string;
+  submissionUrl?: string;
+  submittedAt?: string;
 }
 
-interface Exam {
+interface ExamItem {
   id: string;
   title: string;
-  url: string;
-  deadline: string;
-  status: 'active' | 'expired';
+  examUrl: string;
+  description: string;
+  category: string;
+  createdAt: string;
 }
 
 interface CalendarEvent {
   id: string;
-  studentId: string; // UPDATED: Added to track which student sees this
   title: string;
   date: string;
   time: string;
-  description?: string;
-  status?: string;
+  description: string;
+  status: 'Planlandı' | 'Ders Yapıldı (Öğrenciden Düşüldü)';
+  teacherSummary?: string;
   recordingUrl?: string;
+  recordingTitle?: string;
 }
 
-interface Message {
-  id: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  timestamp: string;
-  isRead: boolean;
-}
+const TEACHER_PASSWORD = 'Ahmos';
 
-const App: React.FC = () => {
+export default function App() {
   // --- STATE ---
-  const [userRole, setUserRole] = useState<'teacher' | 'student' | 'parent' | null>(null);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  // Data States
-  const [students, setStudents] = useState<Student[]>([]);
-  const [parents, setParents] = useState<Parent[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  
-  // Auth Dummy State
+  const [currentRole, setCurrentRole] = useState<'guest' | 'teacher' | 'student' | 'parent'>('guest');
   const [currentStudentUser, setCurrentStudentUser] = useState<Student | null>(null);
   const [currentParentUser, setCurrentParentUser] = useState<Parent | null>(null);
 
-  // Form States (Teacher)
+  // Connection alert feedback
+  const [firebaseStatus, setFirebaseStatus] = useState<'Bağlanıyor' | 'Aktif (Canlı)' | 'Yerel Mod / Kurallar Bekleniyor'>('Bağlanıyor');
+
+  // Core records
+  const [students, setStudents] = useState<Student[]>([]);
+  const [parents, setParents] = useState<Parent[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [exams, setExams] = useState<ExamItem[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  // Tab views
+  const [teacherTab, setTeacherTab] = useState<'dashboard' | 'students' | 'parents' | 'documents' | 'assignments' | 'summaries' | 'calendar'>('dashboard');
+  const [studentTab, setStudentTab] = useState<'dashboard' | 'documents' | 'assignments' | 'exams' | 'calendar'>('dashboard');
+  const [parentTab, setParentTab] = useState<'dashboard' | 'student-status' | 'recordings' | 'calendar'>('dashboard');
+
+  // Credentials
+  const [teacherPass, setTeacherPass] = useState('');
+  const [teacherError, setTeacherError] = useState('');
+
+  // Form input states
   const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentEmail, setNewStudentEmail] = useState('');
-  
+  const [newStudentUser, setNewStudentUser] = useState('');
+  const [newStudentPass, setNewStudentPass] = useState('');
+  const [newStudentNotes, setNewStudentNotes] = useState('');
+
+  const [newParentName, setNewParentName] = useState('');
+  const [newParentUser, setNewParentUser] = useState('');
+  const [newParentPass, setNewParentPass] = useState('');
+  const [newParentLinkedStudents, setNewParentLinkedStudents] = useState<string[]>([]);
+
+  const [newCatName, setNewCatName] = useState('');
   const [docTitle, setDocTitle] = useState('');
   const [docCategory, setDocCategory] = useState('');
+  const [docType, setDocType] = useState<'google-doc' | 'video' | 'link' | 'summary' | 'pdf'>('google-doc');
   const [docUrl, setDocUrl] = useState('');
-  const [docType, setDocType] = useState<'pdf' | 'video' | 'doc' | 'link'>('pdf');
-  const [isGoogleDoc, setIsGoogleDoc] = useState(false);
+  const [docNotes, setDocNotes] = useState('');
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
 
+  const [assignStudentId, setAssignStudentId] = useState('all');
   const [assignTitle, setAssignTitle] = useState('');
-  const [assignCategory, setAssignCategory] = useState('');
-  const [assignDeadline, setAssignDeadline] = useState('');
+  const [assignDesc, setAssignDesc] = useState('');
+  const [assignDueDate, setAssignDueDate] = useState('');
 
   const [examTitle, setExamTitle] = useState('');
   const [examUrl, setExamUrl] = useState('');
-  const [examDeadline, setExamDeadline] = useState('');
+  const [examDesc, setExamDesc] = useState('');
+  const [examCat, setExamCat] = useState('Genel Deneme Sınavı');
 
   const [calTitle, setCalTitle] = useState('');
   const [calDate, setCalDate] = useState('');
   const [calTime, setCalTime] = useState('');
   const [calDesc, setCalDesc] = useState('');
-  const [calStudentId, setCalStudentId] = useState('all'); // UPDATED: Default to all class
 
-  // --- INITIAL LOAD & SYNC ---
+  // Login forms
+  const [studentLoginUser, setStudentLoginUser] = useState('');
+  const [studentLoginPass, setStudentLoginPass] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  const [parentLoginUser, setParentLoginUser] = useState('');
+  const [parentLoginPass, setParentLoginPass] = useState('');
+  const [parentLoginError, setParentLoginError] = useState('');
+
+  // Modals / extra UI logic
+  const [submittingAssignmentId, setSubmittingAssignmentId] = useState<string | null>(null);
+  const [studentSubmissionUrl, setStudentSubmissionUrl] = useState('');
+  const [studentSubmissionNotes, setStudentSubmissionNotes] = useState('');
+
+  const [expandedRecordingId, setExpandedRecordingId] = useState<string | null>(null);
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
+  const [editNotesValue, setEditNotesValue] = useState('');
+
+  // --- FIREBASE REALTIME LISTENERS & DUAL SYNC ---
   useEffect(() => {
     // Initial fallback load from LocalStorage to guarantee instant display
     const savedStudents = localStorage.getItem('derslink_students');
@@ -166,7 +210,7 @@ const App: React.FC = () => {
     const savedAssignments = localStorage.getItem('derslink_assignments');
     const savedExams = localStorage.getItem('derslink_exams');
     const savedEvents = localStorage.getItem('derslink_events');
-    
+
     if (savedStudents) setStudents(JSON.parse(savedStudents));
     if (savedParents) setParents(JSON.parse(savedParents));
     
@@ -181,896 +225,1928 @@ const App: React.FC = () => {
     if (savedDocs) setDocuments(JSON.parse(savedDocs));
     if (savedAssignments) setAssignments(JSON.parse(savedAssignments));
     if (savedExams) setExams(JSON.parse(savedExams));
-    if (savedEvents) setEvents(JSON.parse(savedEvents));
     
-    // Set default category if none selected
-    if (categories.length > 0) {
-      setDocCategory(categories[0]);
-      setAssignCategory(categories[0]);
+    if (savedEvents) {
+      setEvents(JSON.parse(savedEvents));
     } else {
-      setDocCategory('Konu Özetleri');
-      setAssignCategory('Konu Özetleri');
+      const initialEvents: CalendarEvent[] = [
+        {
+          id: 'evt-1',
+          title: 'Matematik Fonksiyonlar Canlı Etüt',
+          date: new Date().toISOString().split('T')[0],
+          time: '16:30',
+          description: 'Google Takvim entegrasyonu kapsamında tanımlanmış genel ders.',
+          status: 'Planlandı'
+        }
+      ];
+      setEvents(initialEvents);
+      localStorage.setItem('derslink_events', JSON.stringify(initialEvents));
     }
+
+    // --- SETUP REALTIME FIREBASE LISTENERS ---
+    let unsubStudents: () => void = () => {};
+    let unsubParents: () => void = () => {};
+    let unsubCategories: () => void = () => {};
+    let unsubDocs: () => void = () => {};
+    let unsubAssignments: () => void = () => {};
+    let unsubExams: () => void = () => {};
+    let unsubEvents: () => void = () => {};
+
+    try {
+      unsubStudents = onSnapshot(collection(db, "students"), (snapshot) => {
+        const items: Student[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Student));
+        setStudents(items);
+        localStorage.setItem('derslink_students', JSON.stringify(items));
+        setFirebaseStatus('Aktif (Canlı)');
+      }, (err) => {
+        console.warn("Firebase okuma kuralları bekleniyor veya internet kısıtlı. Yerel veriler kullanılıyor.", err);
+        setFirebaseStatus('Yerel Mod / Kurallar Bekleniyor');
+      });
+
+      unsubParents = onSnapshot(collection(db, "parents"), (snapshot) => {
+        const items: Parent[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Parent));
+        setParents(items);
+        localStorage.setItem('derslink_parents', JSON.stringify(items));
+      }, () => {});
+
+      unsubCategories = onSnapshot(collection(db, "categories"), (snapshot) => {
+        const items: string[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data().name));
+        if (items.length > 0) {
+          setCategories(items);
+          localStorage.setItem('derslink_categories', JSON.stringify(items));
+        }
+      }, () => {});
+
+      unsubDocs = onSnapshot(collection(db, "documents"), (snapshot) => {
+        const items: DocumentItem[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as DocumentItem));
+        setDocuments(items);
+        localStorage.setItem('derslink_documents', JSON.stringify(items));
+      }, () => {});
+
+      unsubAssignments = onSnapshot(collection(db, "assignments"), (snapshot) => {
+        const items: Assignment[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Assignment));
+        setAssignments(items);
+        localStorage.setItem('derslink_assignments', JSON.stringify(items));
+      }, () => {});
+
+      unsubExams = onSnapshot(collection(db, "exams"), (snapshot) => {
+        const items: ExamItem[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as ExamItem));
+        setExams(items);
+        localStorage.setItem('derslink_exams', JSON.stringify(items));
+      }, () => {});
+
+      unsubEvents = onSnapshot(collection(db, "events"), (snapshot) => {
+        const items: CalendarEvent[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as CalendarEvent));
+        setEvents(items);
+        localStorage.setItem('derslink_events', JSON.stringify(items));
+      }, () => {});
+
+    } catch (err) {
+      console.warn("Firebase entegrasyonu başlatılırken uyarı oluştu, tam yedeklemeli çalışıyor.", err);
+      setFirebaseStatus('Yerel Mod / Kurallar Bekleniyor');
+    }
+
+    return () => {
+      unsubStudents();
+      unsubParents();
+      unsubCategories();
+      unsubDocs();
+      unsubAssignments();
+      unsubExams();
+      unsubEvents();
+    };
   }, []);
 
-  // Sync to LocalStorage whenever state changes
-  useEffect(() => {
-    localStorage.setItem('derslink_students', JSON.stringify(students));
-    localStorage.setItem('derslink_parents', JSON.stringify(parents));
-    localStorage.setItem('derslink_categories', JSON.stringify(categories));
-    localStorage.setItem('derslink_documents', JSON.stringify(documents));
-    localStorage.setItem('derslink_assignments', JSON.stringify(assignments));
-    localStorage.setItem('derslink_exams', JSON.stringify(exams));
-    localStorage.setItem('derslink_events', JSON.stringify(events));
-  }, [students, parents, categories, documents, assignments, exams, events]);
-
-  // --- PERSISTENCE UTILS ---
-  const saveDocToFirebase = async (collection: string, id: string, data: any) => {
-    // Simulate API call. In real app, use Firebase SDK here.
-    console.log(`Saving to ${collection}/${id}:`, data);
+  // --- WRITE WRAPPERS TO FIREBASE & LOCAL STORAGE (DUAL RESILIENCE) ---
+  const saveDocToFirebase = async (collectionName: string, id: string, dataObj: any) => {
+    try {
+      await setDoc(doc(db, collectionName, id), dataObj);
+    } catch (err) {
+      console.warn(`Firebase yazma uyarısı (${collectionName}): veritabanı kuralları kilitli olabilir. Yerel senkronizasyon anında gerçekleştirildi.`);
+    }
   };
 
-  const deleteDocFromFirebase = async (collection: string, id: string) => {
-    console.log(`Deleting from ${collection}/${id}`);
+  const deleteDocFromFirebase = async (collectionName: string, id: string) => {
+    try {
+      await deleteDoc(doc(db, collectionName, id));
+    } catch (err) {
+      console.warn(`Firebase silme uyarısı (${collectionName}). Yerel kopya temizlendi.`);
+    }
   };
 
-  // --- TEACHER HANDLERS ---
+  // --- ACTIONS ---
+
+  const handleTeacherLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setTeacherError('');
+    if (teacherPass === TEACHER_PASSWORD) {
+      setCurrentRole('teacher');
+      setTeacherTab('dashboard');
+      setTeacherPass('');
+    } else {
+      setTeacherError('Hatalı şifre! Lütfen doğru şifreyi girin.');
+    }
+  };
+
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudentName || !newStudentEmail) return;
-
+    if (!newStudentName || !newStudentUser || !newStudentPass) {
+      alert('Lütfen tüm öğrenci bilgilerini eksiksiz doldurun.');
+      return;
+    }
+    if (students.some(s => s.username.toLowerCase() === newStudentUser.toLowerCase())) {
+      alert('Bu kullanıcı adı zaten başka bir öğrenciye tanımlanmış.');
+      return;
+    }
     const newStudent: Student = {
-      id: 'st_' + Date.now(),
+      id: 'stud_' + Date.now(),
       name: newStudentName,
-      email: newStudentEmail,
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(newStudentName)}&background=random`,
-      assignmentsCompleted: 0,
-      gradeAverage: 0,
-      lastActive: 'Az Önce'
+      username: newStudentUser.trim(),
+      passwordHash: newStudentPass,
+      avatarSeed: Math.floor(Math.random() * 100 + 1).toString(),
+      createdAt: new Date().toLocaleDateString('tr-TR'),
+      parentIds: [],
+      teacherNotes: newStudentNotes || ''
     };
 
-    setStudents([...students, newStudent]);
-    await saveDocToFirebase('students', newStudent.id, newStudent);
-    
+    // Optimistic dual update
+    const updated = [...students, newStudent];
+    setStudents(updated);
+    localStorage.setItem('derslink_students', JSON.stringify(updated));
+    await saveDocToFirebase("students", newStudent.id, newStudent);
+
     setNewStudentName('');
-    setNewStudentEmail('');
+    setNewStudentUser('');
+    setNewStudentPass('');
+    setNewStudentNotes('');
+    alert('Öğrenci başarıyla veritabanına kaydedildi!');
   };
 
-  const handleUploadDoc = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!docTitle || !docUrl) return;
+  const handleDeleteStudent = async (id: string) => {
+    if (window.confirm('Bu öğrenciyi ve kayıtları silmek istediğinize emin misiniz?')) {
+      const updated = students.filter(s => s.id !== id);
+      setStudents(updated);
+      localStorage.setItem('derslink_students', JSON.stringify(updated));
+      await deleteDocFromFirebase("students", id);
 
-    const newDoc: Document = {
+      // Clean assignments
+      assignments.forEach(async (a) => {
+        if (a.studentId === id) {
+          await deleteDocFromFirebase("assignments", a.id);
+        }
+      });
+      const updatedAssigns = assignments.filter(a => a.studentId !== id);
+      setAssignments(updatedAssigns);
+      localStorage.setItem('derslink_assignments', JSON.stringify(updatedAssigns));
+
+      // Update linked parents
+      parents.forEach(async (p) => {
+        if (p.linkedStudentIds.includes(id)) {
+          const updatedP = { ...p, linkedStudentIds: p.linkedStudentIds.filter(sid => sid !== id) };
+          await saveDocToFirebase("parents", p.id, updatedP);
+        }
+      });
+      const updatedParents = parents.map(p => ({
+        ...p,
+        linkedStudentIds: p.linkedStudentIds.filter(sid => sid !== id)
+      }));
+      setParents(updatedParents);
+      localStorage.setItem('derslink_parents', JSON.stringify(updatedParents));
+    }
+  };
+
+  const handleUpdateStudentNotes = async (studentId: string) => {
+    const updated = students.map(s => {
+      if (s.id === studentId) {
+        return { ...s, teacherNotes: editNotesValue };
+      }
+      return s;
+    });
+    setStudents(updated);
+    localStorage.setItem('derslink_students', JSON.stringify(updated));
+    
+    const target = updated.find(s => s.id === studentId);
+    if (target) {
+      await saveDocToFirebase("students", studentId, target);
+    }
+
+    setEditingStudentId(null);
+    setEditNotesValue('');
+    alert('Öğrenci notu güncellendi!');
+  };
+
+  const handleAddParent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newParentName || !newParentUser || !newParentPass) {
+      alert('Lütfen tüm veli bilgilerini eksiksiz doldurun.');
+      return;
+    }
+    if (parents.some(p => p.username.toLowerCase() === newParentUser.toLowerCase())) {
+      alert('Bu kullanıcı adı zaten başka bir veliye tanımlanmış.');
+      return;
+    }
+    const newParent: Parent = {
+      id: 'parent_' + Date.now(),
+      name: newParentName,
+      username: newParentUser.trim(),
+      passwordHash: newParentPass,
+      linkedStudentIds: newParentLinkedStudents,
+      createdAt: new Date().toLocaleDateString('tr-TR')
+    };
+    
+    const updatedParents = [...parents, newParent];
+    setParents(updatedParents);
+    localStorage.setItem('derslink_parents', JSON.stringify(updatedParents));
+    await saveDocToFirebase("parents", newParent.id, newParent);
+
+    // Update students
+    const updatedStudents = students.map(s => {
+      if (newParentLinkedStudents.includes(s.id)) {
+        return { ...s, parentIds: [...(s.parentIds || []), newParent.id] };
+      }
+      return s;
+    });
+    setStudents(updatedStudents);
+    localStorage.setItem('derslink_students', JSON.stringify(updatedStudents));
+    
+    updatedStudents.forEach(async (s) => {
+      if (newParentLinkedStudents.includes(s.id)) {
+        await saveDocToFirebase("students", s.id, s);
+      }
+    });
+
+    setNewParentName('');
+    setNewParentUser('');
+    setNewParentPass('');
+    setNewParentLinkedStudents([]);
+    alert('Veli başarıyla Firebase veritabanına kaydedildi!');
+  };
+
+  const handleDeleteParent = async (id: string) => {
+    if (window.confirm('Bu veliyi silmek istediğinize emin misiniz?')) {
+      const updatedParents = parents.filter(p => p.id !== id);
+      setParents(updatedParents);
+      localStorage.setItem('derslink_parents', JSON.stringify(updatedParents));
+      await deleteDocFromFirebase("parents", id);
+
+      const updatedStudents = students.map(s => ({
+        ...s,
+        parentIds: (s.parentIds || []).filter(pid => pid !== id)
+      }));
+      setStudents(updatedStudents);
+      localStorage.setItem('derslink_students', JSON.stringify(updatedStudents));
+      
+      updatedStudents.forEach(async (s) => {
+        await saveDocToFirebase("students", s.id, s);
+      });
+    }
+  };
+
+  const toggleParentStudentLink = (studentId: string) => {
+    setNewParentLinkedStudents(prev =>
+      prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
+    );
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    if (categories.includes(newCatName.trim())) {
+      alert('Bu kategori zaten mevcut.');
+      return;
+    }
+    const updated = [...categories, newCatName.trim()];
+    setCategories(updated);
+    localStorage.setItem('derslink_categories', JSON.stringify(updated));
+    await saveDocToFirebase("categories", newCatName.trim(), { name: newCatName.trim() });
+    setNewCatName('');
+  };
+
+  const handleRemoveCategory = async (cat: string) => {
+    if (window.confirm(`"${cat}" kategorisini silmek istiyor musunuz?`)) {
+      const updated = categories.filter(c => c !== cat);
+      setCategories(updated);
+      localStorage.setItem('derslink_categories', JSON.stringify(updated));
+      await deleteDocFromFirebase("categories", cat);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedPdfFile(e.target.files[0]);
+    }
+  };
+
+  const handleAddDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const activeCategory = docCategory || categories[0] || 'Genel';
+    if (!docTitle) {
+      alert('Lütfen doküman başlığını girin.');
+      return;
+    }
+
+    // Convert PDF to base64
+    if (docType === 'pdf' && selectedPdfFile) {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Url = event.target?.result as string;
+        const newDoc: DocumentItem = {
+          id: 'doc_' + Date.now(),
+          title: docTitle,
+          category: activeCategory,
+          type: 'pdf',
+          url: base64Url,
+          teacherNotes: docNotes || 'PDF dokümanı',
+          createdAt: new Date().toLocaleDateString('tr-TR'),
+          fileName: selectedPdfFile?.name
+        };
+        const updated = [...documents, newDoc];
+        setDocuments(updated);
+        localStorage.setItem('derslink_documents', JSON.stringify(updated));
+        await saveDocToFirebase("documents", newDoc.id, newDoc);
+
+        setDocTitle('');
+        setDocUrl('');
+        setDocNotes('');
+        setSelectedPdfFile(null);
+        alert('PDF dosyası başarıyla Firebase veritabanına yüklendi!');
+      };
+      reader.readAsDataURL(selectedPdfFile);
+      return;
+    }
+
+    if (!docUrl && docType !== 'pdf') {
+      alert('Lütfen link adresini girin.');
+      return;
+    }
+
+    const newDoc: DocumentItem = {
       id: 'doc_' + Date.now(),
       title: docTitle,
-      category: docCategory,
+      category: activeCategory,
       type: docType,
       url: docUrl,
-      uploadDate: new Date().toLocaleDateString('tr-TR'),
-      isGoogleDoc: isGoogleDoc
+      teacherNotes: docNotes || 'Öğretmen not bırakmadı.',
+      createdAt: new Date().toLocaleDateString('tr-TR')
     };
-
-    setDocuments([newDoc, ...documents]);
-    await saveDocToFirebase('documents', newDoc.id, newDoc);
+    const updated = [...documents, newDoc];
+    setDocuments(updated);
+    localStorage.setItem('derslink_documents', JSON.stringify(updated));
+    await saveDocToFirebase("documents", newDoc.id, newDoc);
 
     setDocTitle('');
     setDocUrl('');
+    setDocNotes('');
+    setSelectedPdfFile(null);
+    alert('Doküman başarıyla Firebase veritabanına eklendi!');
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    if (window.confirm('Bu dokümanı silmek istediğinize emin misiniz?')) {
+      const updated = documents.filter(d => d.id !== id);
+      setDocuments(updated);
+      localStorage.setItem('derslink_documents', JSON.stringify(updated));
+      await deleteDocFromFirebase("documents", id);
+    }
   };
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!assignTitle || !assignDeadline) return;
-
+    if (!assignTitle || !assignDueDate) {
+      alert('Lütfen ödev başlığını ve son teslim tarihini belirleyin.');
+      return;
+    }
     const newAssign: Assignment = {
-      id: 'asg_' + Date.now(),
+      id: 'assign_' + Date.now(),
+      studentId: assignStudentId,
       title: assignTitle,
-      category: assignCategory,
-      deadline: assignDeadline,
-      status: 'active',
-      submissions: 0,
-      totalStudents: students.length
+      description: assignDesc || 'Detaylı açıklama belirtilmedi.',
+      dueDate: assignDueDate,
+      status: 'Bekliyor'
     };
-
-    setAssignments([newAssign, ...assignments]);
-    await saveDocToFirebase('assignments', newAssign.id, newAssign);
+    const updated = [...assignments, newAssign];
+    setAssignments(updated);
+    localStorage.setItem('derslink_assignments', JSON.stringify(updated));
+    await saveDocToFirebase("assignments", newAssign.id, newAssign);
 
     setAssignTitle('');
-    setAssignDeadline('');
+    setAssignDesc('');
+    setAssignDueDate('');
+    alert(assignStudentId === 'all' ? 'Ödev tüm öğrencilere iletildi!' : 'Ödev ilgili öğrenciye iletildi!');
+  };
+
+  const handleDeleteAssignment = async (id: string) => {
+    if (window.confirm('Bu ödevi kaldırmak istiyor musunuz?')) {
+      const updated = assignments.filter(a => a.id !== id);
+      setAssignments(updated);
+      localStorage.setItem('derslink_assignments', JSON.stringify(updated));
+      await deleteDocFromFirebase("assignments", id);
+    }
   };
 
   const handleCreateExam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!examTitle || !examUrl || !examDeadline) return;
-
-    const newExam: Exam = {
-      id: 'exm_' + Date.now(),
+    if (!examTitle || !examUrl) {
+      alert('Lütfen sınav adını ve linkini yazın.');
+      return;
+    }
+    const newExam: ExamItem = {
+      id: 'exam_' + Date.now(),
       title: examTitle,
-      url: examUrl,
-      deadline: examDeadline,
-      status: 'active'
+      examUrl: examUrl,
+      description: examDesc || 'Sınav süresi öğretmen tarafından yönetilir.',
+      category: examCat,
+      createdAt: new Date().toLocaleDateString('tr-TR')
     };
-
-    setExams([newExam, ...exams]);
-    await saveDocToFirebase('exams', newExam.id, newExam);
+    const updated = [...exams, newExam];
+    setExams(updated);
+    localStorage.setItem('derslink_exams', JSON.stringify(updated));
+    await saveDocToFirebase("exams", newExam.id, newExam);
 
     setExamTitle('');
     setExamUrl('');
-    setExamDeadline('');
+    setExamDesc('');
+    alert('Sınav bağlantısı oluşturuldu!');
+  };
+
+  const handleDeleteExam = async (id: string) => {
+    if (window.confirm('Bu sınav linkini kaldırmak istiyor musunuz?')) {
+      const updated = exams.filter(e => e.id !== id);
+      setExams(updated);
+      localStorage.setItem('derslink_exams', JSON.stringify(updated));
+      await deleteDocFromFirebase("exams", id);
+    }
   };
 
   const handleCreateCalendarEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!calTitle || !calDate || !calTime) return;
-
+    if (!calTitle || !calDate || !calTime) {
+      alert('Lütfen ders adını, gününü ve saatini girin.');
+      return;
+    }
     const newEvt: CalendarEvent = {
       id: 'evt_' + Date.now(),
-      studentId: calStudentId, // UPDATED: Save the selected student ID
       title: calTitle,
       date: calDate,
       time: calTime,
       description: calDesc || 'Planlı Canlı Ders.',
       status: 'Planlandı'
     };
-
-    setEvents([newEvt, ...events]);
-    await saveDocToFirebase('calendar', newEvt.id, newEvt);
+    const updated = [...events, newEvt];
+    setEvents(updated);
+    localStorage.setItem('derslink_events', JSON.stringify(updated));
+    await saveDocToFirebase("events", newEvt.id, newEvt);
 
     setCalTitle('');
     setCalDate('');
     setCalTime('');
     setCalDesc('');
-    setCalStudentId('all'); // Reset to all
+    alert('Ders takvime eklendi!');
   };
 
-  const deleteItem = async (type: string, id: string) => {
-    if (!window.confirm('Bu içeriği silmek istediğinize emin misiniz?')) return;
+  const handleMarkLessonCompleted = async (id: string, notes: string, recordingUrl?: string) => {
+    const updated = events.map(evt => {
+      if (evt.id === id) {
+        return {
+          ...evt,
+          status: 'Ders Yapıldı (Öğrenciden Düşüldü)' as const,
+          teacherSummary: notes || 'Bu ders başarıyla tamamlandı.',
+          recordingUrl: recordingUrl || undefined,
+          recordingTitle: recordingUrl ? 'Canlı Ders Ekran Kaydı' : undefined
+        };
+      }
+      return evt;
+    });
+    setEvents(updated);
+    localStorage.setItem('derslink_events', JSON.stringify(updated));
     
-    switch(type) {
-      case 'student': setStudents(students.filter(i => i.id !== id)); break;
-      case 'document': setDocuments(documents.filter(i => i.id !== id)); break;
-      case 'assignment': setAssignments(assignments.filter(i => i.id !== id)); break;
-      case 'exam': setExams(exams.filter(i => i.id !== id)); break;
-      case 'event': setEvents(events.filter(i => i.id !== id)); break;
+    const changedEvt = updated.find(e => e.id === id);
+    if (changedEvt) {
+      await saveDocToFirebase("events", id, changedEvt);
     }
-    await deleteDocFromFirebase(type, id);
+    alert('Ders yapıldı olarak tescillendi!');
   };
 
-  // --- RENDER HELPERS ---
-  const RoleSelector = () => (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-10">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-600 rounded-2xl shadow-xl shadow-blue-900/20">
-              <GraduationCap size={48} className="text-white" />
-            </div>
-          </div>
-          <h1 className="text-4xl font-black text-white tracking-tight mb-2">DERSLİNK <span className="text-blue-500">AI</span></h1>
-          <p className="text-slate-400 font-medium">Geleceğin Eğitim Yönetim Platformu</p>
-        </div>
+  const handleDeleteEvent = async (id: string) => {
+    if (window.confirm('Bu takvim kaydını silmek istiyor musunuz?')) {
+      const updated = events.filter(e => e.id !== id);
+      setEvents(updated);
+      localStorage.setItem('derslink_events', JSON.stringify(updated));
+      await deleteDocFromFirebase("events", id);
+    }
+  };
 
-        <div className="grid gap-4">
-          <button 
-            onClick={() => setUserRole('teacher')}
-            className="group relative bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center gap-5 transition-all hover:bg-slate-800 hover:border-blue-500 hover:scale-[1.02] active:scale-95 shadow-lg"
-          >
-            <div className="p-3 bg-blue-500/10 rounded-xl group-hover:bg-blue-500 transition-colors">
-              <Shield size={28} className="text-blue-500 group-hover:text-white" />
-            </div>
-            <div className="text-left">
-              <h3 className="text-white font-bold text-lg">Öğretmen Girişi</h3>
-              <p className="text-slate-500 text-sm">Sınıfı yönet, doküman yükle, analiz yap.</p>
-            </div>
-            <ChevronRight className="ml-auto text-slate-700 group-hover:text-blue-500" />
-          </button>
+  const handleStudentLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    if (!studentLoginUser || !studentLoginPass) {
+      setLoginError('Kullanıcı adı ve şifre girin.');
+      return;
+    }
+    const found = students.find(
+      s => s.username.toLowerCase() === studentLoginUser.toLowerCase() && s.passwordHash === studentLoginPass
+    );
+    if (found) {
+      setCurrentStudentUser(found);
+      setCurrentRole('student');
+      setStudentTab('dashboard');
+    } else {
+      setLoginError('Hatalı kullanıcı adı veya şifre!');
+    }
+  };
 
-          <button 
-            onClick={() => {
-              if (students.length === 0) {
-                alert("Henüz öğrenci eklenmemiş. Lütfen önce öğretmen olarak öğrenci ekleyin.");
-                return;
-              }
-              setCurrentStudentUser(students[0]);
-              setUserRole('student');
-            }}
-            className="group relative bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center gap-5 transition-all hover:bg-slate-800 hover:border-purple-500 hover:scale-[1.02] active:scale-95 shadow-lg"
-          >
-            <div className="p-3 bg-purple-500/10 rounded-xl group-hover:bg-purple-500 transition-colors">
-              <User size={28} className="text-purple-500 group-hover:text-white" />
-            </div>
-            <div className="text-left">
-              <h3 className="text-white font-bold text-lg">Öğrenci Girişi</h3>
-              <p className="text-slate-500 text-sm">Ödevlerini gör, derslere katıl, döküman indir.</p>
-            </div>
-            <ChevronRight className="ml-auto text-slate-700 group-hover:text-purple-500" />
-          </button>
+  const handleParentLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setParentLoginError('');
+    if (!parentLoginUser || !parentLoginPass) {
+      setParentLoginError('Kullanıcı adı ve şifre girin.');
+      return;
+    }
+    const found = parents.find(
+      p => p.username.toLowerCase() === parentLoginUser.toLowerCase() && p.passwordHash === parentLoginPass
+    );
+    if (found) {
+      setCurrentParentUser(found);
+      setCurrentRole('parent');
+      setParentTab('dashboard');
+    } else {
+      setParentLoginError('Hatalı kullanıcı adı veya şifre!');
+    }
+  };
 
-          <button 
-            onClick={() => {
-              if (parents.length === 0) {
-                alert("Henüz veli eklenmemiş.");
-                return;
-              }
-              setCurrentParentUser(parents[0]);
-              setUserRole('parent');
-            }}
-            className="group relative bg-slate-900 border border-slate-800 p-6 rounded-2xl flex items-center gap-5 transition-all hover:bg-slate-800 hover:border-emerald-500 hover:scale-[1.02] active:scale-95 shadow-lg"
-          >
-            <div className="p-3 bg-emerald-500/10 rounded-xl group-hover:bg-emerald-500 transition-colors">
-              <Users size={28} className="text-emerald-500 group-hover:text-white" />
-            </div>
-            <div className="text-left">
-              <h3 className="text-white font-bold text-lg">Veli Girişi</h3>
-              <p className="text-slate-500 text-sm">Öğrenci gelişimini takip et, takvimi kontrol et.</p>
-            </div>
-            <ChevronRight className="ml-auto text-slate-700 group-hover:text-emerald-500" />
-          </button>
-        </div>
+  const handleStudentSubmitHomework = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submittingAssignmentId) return;
+    if (!studentSubmissionUrl) {
+      alert('Google Doküman linkinizi girin.');
+      return;
+    }
+    const updated = assignments.map(assign => {
+      if (assign.id === submittingAssignmentId) {
+        return {
+          ...assign,
+          status: 'Tamamlandı' as const,
+          submissionUrl: studentSubmissionUrl,
+          studentNotes: studentSubmissionNotes || 'Ödev tamamlandı.',
+          submittedAt: new Date().toLocaleString('tr-TR')
+        };
+      }
+      return assign;
+    });
+    setAssignments(updated);
+    localStorage.setItem('derslink_assignments', JSON.stringify(updated));
+    
+    const submittedObj = updated.find(a => a.id === submittingAssignmentId);
+    if (submittedObj) {
+      await saveDocToFirebase("assignments", submittedObj.id, submittedObj);
+    }
 
-        <div className="mt-12 text-center">
-          <p className="text-slate-600 text-[10px] uppercase tracking-[0.2em] font-bold">Powered by Gemini Ultra 2.0</p>
-        </div>
-      </div>
-    </div>
-  );
+    setSubmittingAssignmentId(null);
+    setStudentSubmissionUrl('');
+    setStudentSubmissionNotes('');
+    alert('Özetiniz başarıyla Firebase veritabanına ve öğretmeninize iletildi!');
+  };
 
-  const TeacherSidebar = () => (
-    <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-950 border-r border-slate-900 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-      <div className="h-full flex flex-col p-6">
-        <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <GraduationCap className="text-white" size={24} />
-          </div>
-          <span className="text-xl font-black text-white tracking-tighter">DERSLİNK <span className="text-blue-500">PRO</span></span>
-        </div>
+  const insertSampleGoogleDoc = (type: string) => {
+    if (type === 'doc') {
+      setDocUrl('https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUU96GPCE5AOPxXBXw7k/edit');
+      if(!docTitle) setDocTitle('Matematik Konu Özeti');
+    } else if (type === 'video') {
+      setDocUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+      if(!docTitle) setDocTitle('Fizik Anlatım Videosu');
+    } else if (type === 'exam') {
+      setExamUrl('https://docs.google.com/forms/d/e/1FAIpQLSfB_vEorI1L73A_DzkBvGQD_M2YV6m8A/viewform');
+      if(!examTitle) setExamTitle('AYT Matematik Denemesi');
+    }
+  };
 
-        <nav className="flex-1 space-y-1.5">
-          <SidebarLink active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20}/>} label="Dashboard" />
-          <SidebarLink active={activeTab === 'students'} onClick={() => setActiveTab('students')} icon={<Users size={20}/>} label="Öğrenci Yönetimi" />
-          <SidebarLink active={activeTab === 'docs'} onClick={() => setActiveTab('docs')} icon={<BookOpen size={20}/>} label="Eğitim Materyalleri" />
-          <SidebarLink active={activeTab === 'assignments'} onClick={() => setActiveTab('assignments')} icon={<FileText size={20}/>} label="Ödevler & Sınavlar" />
-          <SidebarLink active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} icon={<Calendar size={20}/>} label="Canlı Ders Takvimi" />
-          <SidebarLink active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} icon={<PieChart size={20}/>} label="Analiz Raporları" />
-        </nav>
+  const getLinkedStudents = (parent: Parent): Student[] => {
+    return students.filter(s => parent.linkedStudentIds.includes(s.id));
+  };
 
-        <div className="mt-auto space-y-4 pt-6 border-t border-slate-900">
-          <div className="flex items-center gap-3 px-2 py-3 rounded-xl bg-slate-900/40">
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm">ÖK</div>
-            <div className="overflow-hidden">
-              <p className="text-white text-xs font-bold truncate">Öğr. Kaan Yılmaz</p>
-              <p className="text-slate-500 text-[10px] truncate">Matematik Bölüm Başkanı</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => setUserRole(null)}
-            className="w-full flex items-center gap-3 px-4 py-3 text-slate-500 hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-all font-medium text-sm"
-          >
-            <LogOut size={18} /> Çıkış Yap
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const getStudentPerformance = (studentId: string) => {
+    const studentAssignments = assignments.filter(a => a.studentId === studentId || a.studentId === 'all');
+    const done = studentAssignments.filter(a => a.status === 'Tamamlandı').length;
+    const pending = studentAssignments.filter(a => a.status === 'Bekliyor').length;
+    const total = done + pending;
+    const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { done, pending, total, percentage };
+  };
 
-  const SidebarLink = ({ active, icon, label, onClick }: any) => (
-    <button 
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}
-    >
-      <span className={`${active ? 'text-white' : 'text-slate-500 group-hover:text-blue-500'} transition-colors`}>{icon}</span>
-      <span className="font-bold text-sm tracking-tight">{label}</span>
-      {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-    </button>
-  );
-
-  // --- SUB-PANELS ---
-  
-  const TeacherDashboard = () => (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-black text-white tracking-tight">Hoş Geldiniz, Kaan Bey 👋</h2>
-          <p className="text-slate-400 mt-1">Bugün sınıfınızda neler olup bittiğine bir göz atalım.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-slate-300 text-xs font-bold uppercase tracking-widest">Sistem Aktif</span>
-          </div>
-          <button className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
-            <Bell size={20} />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Toplam Öğrenci" value={students.length.toString()} icon={<Users className="text-blue-500" />} trend="+2 Yeni" />
-        <StatCard title="Aktif Ödevler" value={assignments.length.toString()} icon={<FileText className="text-purple-500" />} trend="5 Bugün" />
-        <StatCard title="Tamamlanma" value="%84" icon={<CheckCircle2 className="text-emerald-500" />} trend="+%12 Artış" />
-        <StatCard title="Ortalama Başarı" value="B+" icon={<PieChart className="text-amber-500" />} trend="Kararlı" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-slate-900/50 border border-slate-900 rounded-3xl p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-black text-white">Son Etkinlikler</h3>
-              <button className="text-blue-500 text-xs font-bold hover:underline">Tümünü Gör</button>
-            </div>
-            <div className="space-y-4">
-              {students.slice(0, 3).map(st => (
-                <div key={st.id} className="flex items-center gap-4 p-4 bg-slate-950/50 rounded-2xl border border-slate-900/50 hover:border-slate-800 transition-all">
-                  <img src={st.avatar} alt={st.name} className="w-12 h-12 rounded-xl" />
-                  <div className="flex-1">
-                    <p className="text-white text-sm font-bold">{st.name}</p>
-                    <p className="text-slate-500 text-xs">"Üçgenlerde Açılar" ödevini teslim etti.</p>
-                  </div>
-                  <span className="text-slate-600 text-[10px] font-medium">14dk önce</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-6 shadow-xl shadow-blue-900/20 relative overflow-hidden group">
-            <div className="relative z-10">
-              <h3 className="text-white font-black text-xl mb-2">Hızlı Kurulum</h3>
-              <p className="text-blue-100 text-sm mb-6 leading-relaxed">Öğrencilerinize hemen doküman veya ödev göndermek için sihirbazı kullanın.</p>
-              <button onClick={() => setActiveTab('docs')} className="w-full bg-white text-blue-600 font-black py-3 rounded-xl text-sm transition-all hover:bg-blue-50 hover:scale-[1.02] active:scale-95">BAŞLAT</button>
-            </div>
-            <div className="absolute -bottom-6 -right-6 text-white/10 group-hover:scale-125 transition-transform duration-700">
-              <Monitor size={140} />
-            </div>
-          </div>
-          
-          <div className="bg-slate-900 border border-slate-900 rounded-3xl p-6">
-            <h3 className="text-white font-black text-lg mb-4">Yaklaşan Dersler</h3>
-            <div className="space-y-3">
-              {events.slice(0, 2).map(e => (
-                <div key={e.id} className="p-3 bg-slate-950 border-l-4 border-blue-500 rounded-r-xl">
-                  <p className="text-white text-xs font-bold">{e.title}</p>
-                  <p className="text-slate-500 text-[10px] flex items-center gap-1 mt-1">
-                    <Clock size={10} /> {e.time} | {e.date}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const StatCard = ({ title, value, icon, trend }: any) => (
-    <div className="bg-slate-900/50 border border-slate-900 p-6 rounded-3xl transition-all hover:bg-slate-900 hover:border-slate-800">
-      <div className="flex items-center justify-between mb-4">
-        <div className="p-2.5 bg-slate-950 rounded-xl">{icon}</div>
-        <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-lg">{trend}</span>
-      </div>
-      <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">{title}</p>
-      <h4 className="text-3xl font-black text-white mt-1">{value}</h4>
-    </div>
-  );
-
-  const TeacherStudents = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-white">Öğrenci Yönetimi</h2>
-        <button onClick={() => (document.getElementById('add-student-modal') as any).showModal()} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-5 rounded-xl text-sm flex items-center gap-2 transition-all">
-          <Plus size={18} /> Yeni Öğrenci
-        </button>
-      </div>
-
-      <div className="bg-slate-900/50 border border-slate-900 rounded-3xl overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-slate-900">
-              <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Öğrenci</th>
-              <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">E-Posta</th>
-              <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Ödevler</th>
-              <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Ortalama</th>
-              <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Aksiyon</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-900/50">
-            {students.map(st => (
-              <tr key={st.id} className="hover:bg-slate-900/50 transition-all group">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <img src={st.avatar} className="w-9 h-9 rounded-lg" alt="" />
-                    <span className="text-white text-sm font-bold">{st.name}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-slate-400 text-sm">{st.email}</td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 w-16 bg-slate-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(st.assignmentsCompleted / 10) * 100}%` }} />
-                    </div>
-                    <span className="text-white text-xs font-bold">{st.assignmentsCompleted}/10</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className="bg-amber-500/10 text-amber-500 px-2 py-1 rounded text-[10px] font-black tracking-widest">88.4</span>
-                </td>
-                <td className="px-6 py-4">
-                  <button onClick={() => deleteItem('student', st.id)} className="p-2 text-slate-600 hover:text-red-500 transition-colors">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <dialog id="add-student-modal" className="modal bg-slate-950 border border-slate-900 rounded-3xl p-8 shadow-2xl backdrop:bg-slate-950/80 max-w-md w-full">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-black text-white">Yeni Öğrenci Ekle</h3>
-          <button onClick={() => (document.getElementById('add-student-modal') as any).close()} className="text-slate-500 hover:text-white"><X size={20}/></button>
-        </div>
-        <form onSubmit={handleAddStudent} className="space-y-4">
-          <div>
-            <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">Tam Adı</label>
-            <input 
-              type="text" 
-              required
-              value={newStudentName}
-              onChange={e => setNewStudentName(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white focus:border-blue-500 outline-none" 
-              placeholder="Örn: Ahmet Yılmaz" 
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">E-Posta Adresi</label>
-            <input 
-              type="email" 
-              required
-              value={newStudentEmail}
-              onChange={e => setNewStudentEmail(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white focus:border-blue-500 outline-none" 
-              placeholder="ahmet@okul.com" 
-            />
-          </div>
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl mt-4 transition-all">SİSTEME KAYDET</button>
-        </form>
-      </dialog>
-    </div>
-  );
-
-  const TeacherDocs = () => (
-    <div className="space-y-8">
-      <div className="bg-slate-900 border border-slate-900 rounded-3xl p-8">
-        <h2 className="text-xl font-black text-white mb-6">Doküman Yükle & Paylaş</h2>
-        <form onSubmit={handleUploadDoc} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
-          <div className="lg:col-span-2">
-            <label className="block text-[10px] text-slate-500 mb-2 font-bold uppercase tracking-widest">Başlık</label>
-            <input 
-              type="text" 
-              value={docTitle}
-              onChange={e => setDocTitle(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500" 
-              placeholder="Örn: Fonksiyonlar Konu Özeti" 
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] text-slate-500 mb-2 font-bold uppercase tracking-widest">Kategori</label>
-            <select 
-              value={docCategory}
-              onChange={e => setDocCategory(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none"
-            >
-              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] text-slate-500 mb-2 font-bold uppercase tracking-widest">Tür</label>
-            <select 
-              value={docType}
-              onChange={e => setDocType(e.target.value as any)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none"
-            >
-              <option value="pdf">PDF Belgesi</option>
-              <option value="video">Video Linki</option>
-              <option value="doc">Google Doküman</option>
-              <option value="link">Web Bağlantısı</option>
-            </select>
-          </div>
-          <div className="lg:col-span-3">
-            <label className="block text-[10px] text-slate-500 mb-2 font-bold uppercase tracking-widest">Dosya / Link URL</label>
-            <div className="relative">
-              <input 
-                type="text" 
-                value={docUrl}
-                onChange={e => setDocUrl(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 pl-10 text-sm text-white outline-none focus:border-blue-500" 
-                placeholder="https://drive.google.com/..." 
-              />
-              <ExternalLink className="absolute left-3 top-3.5 text-slate-700" size={16} />
-            </div>
-          </div>
-          <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white font-black h-12 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
-            <Upload size={18} /> YAYINLA
-          </button>
-        </form>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {documents.map(doc => (
-          <div key={doc.id} className="bg-slate-900/50 border border-slate-900 rounded-3xl p-6 hover:bg-slate-900 transition-all group">
-            <div className="flex items-start justify-between mb-4">
-              <div className="p-3 bg-slate-950 rounded-2xl">
-                {doc.type === 'video' ? <Video className="text-red-500" /> : doc.type === 'pdf' ? <FileText className="text-orange-500" /> : <File className="text-blue-500" />}
-              </div>
-              <button onClick={() => deleteItem('document', doc.id)} className="p-2 text-slate-800 hover:text-red-500 transition-colors">
-                <Trash2 size={16} />
-              </button>
-            </div>
-            <h3 className="text-white font-bold mb-1 truncate">{doc.title}</h3>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-4">{doc.category}</p>
-            <div className="flex items-center justify-between pt-4 border-t border-slate-900">
-              <span className="text-slate-600 text-[10px] font-medium">{doc.uploadDate}</span>
-              <a href={doc.url} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-400 font-bold text-xs flex items-center gap-1">
-                GÖRÜNTÜLE <ExternalLink size={12} />
-              </a>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const TeacherAssignments = () => (
-    <div className="space-y-10">
-      {/* Ödev Bölümü */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-white">Aktif Ödevler</h2>
-          <button onClick={() => (document.getElementById('modal-assignment') as any).showModal()} className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-2">
-            <Plus size={16} /> ÖDEV VER
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {assignments.map(asg => (
-            <div key={asg.id} className="bg-slate-900/50 border border-slate-900 p-5 rounded-2xl flex items-center gap-4">
-              <div className="p-3 bg-purple-500/10 rounded-xl"><FileText className="text-purple-500" /></div>
-              <div className="flex-1">
-                <h4 className="text-white font-bold text-sm">{asg.title}</h4>
-                <p className="text-slate-500 text-[10px] mt-0.5 uppercase font-black">{asg.category} • Son: {asg.deadline}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-white font-black text-sm">{asg.submissions}/{asg.totalStudents}</p>
-                <p className="text-slate-600 text-[10px] font-bold">TESLİM</p>
-              </div>
-              <button onClick={() => deleteItem('assignment', asg.id)} className="p-2 text-slate-800 hover:text-red-500 ml-2">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Sınav Bölümü */}
-      <div className="space-y-6 pt-10 border-t border-slate-900">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-white">Online Sınavlar</h2>
-          <button onClick={() => (document.getElementById('modal-exam') as any).showModal()} className="bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-2">
-            <Plus size={16} /> SINAV OLUŞTUR
-          </button>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {exams.map(exm => (
-            <div key={exm.id} className="bg-slate-900 border border-slate-800 p-6 rounded-3xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-3">
-                <button onClick={() => deleteItem('exam', exm.id)} className="text-slate-700 hover:text-red-500"><Trash2 size={16} /></button>
-              </div>
-              <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-4"><CheckCircle2 className="text-amber-500" /></div>
-              <h3 className="text-white font-black mb-1">{exm.title}</h3>
-              <p className="text-slate-500 text-xs mb-6">Son Katılım: {exm.deadline}</p>
-              <a href={exm.url} target="_blank" rel="noreferrer" className="block w-full py-3 bg-slate-950 border border-slate-800 text-slate-300 text-center rounded-xl text-xs font-black group-hover:bg-amber-600 group-hover:text-white transition-all group-hover:border-amber-600">SINAV LİNKİNE GİT</a>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Modals */}
-      <dialog id="modal-assignment" className="modal bg-slate-950 border border-slate-900 rounded-3xl p-8 max-w-md w-full">
-        <h3 className="text-xl font-black text-white mb-6">Yeni Ödev Oluştur</h3>
-        <form onSubmit={handleCreateAssignment} className="space-y-4">
-          <input type="text" value={assignTitle} onChange={e => setAssignTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white outline-none" placeholder="Ödev Başlığı" />
-          <select value={assignCategory} onChange={e => setAssignCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white outline-none">
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <input type="date" value={assignDeadline} onChange={e => setAssignDeadline(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white outline-none" />
-          <button type="submit" className="w-full bg-purple-600 text-white font-black py-3 rounded-xl mt-4">YAYINLA</button>
-          <button type="button" onClick={() => (document.getElementById('modal-assignment') as any).close()} className="w-full text-slate-500 font-bold py-2">İptal</button>
-        </form>
-      </dialog>
-
-      <dialog id="modal-exam" className="modal bg-slate-950 border border-slate-900 rounded-3xl p-8 max-w-md w-full">
-        <h3 className="text-xl font-black text-white mb-6">Yeni Sınav Linki Ekle</h3>
-        <form onSubmit={handleCreateExam} className="space-y-4">
-          <input type="text" value={examTitle} onChange={e => setExamTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white outline-none" placeholder="Sınav Adı (Örn: TYT Deneme-1)" />
-          <input type="text" value={examUrl} onChange={e => setExamUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white outline-none" placeholder="Sınav Linki (Google Forms vb.)" />
-          <input type="date" value={examDeadline} onChange={e => setExamDeadline(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white outline-none" />
-          <button type="submit" className="w-full bg-amber-600 text-white font-black py-3 rounded-xl mt-4">SİSTEME EKLE</button>
-          <button type="button" onClick={() => (document.getElementById('modal-exam') as any).close()} className="w-full text-slate-500 font-bold py-2">İptal</button>
-        </form>
-      </dialog>
-    </div>
-  );
-
-  const TeacherCalendar = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-1">
-        <div className="bg-slate-900 border border-slate-900 rounded-3xl p-8 sticky top-8">
-          <h2 className="text-xl font-black text-white mb-6">Ders Planla</h2>
-          <form onSubmit={handleCreateCalendarEvent} className="space-y-5">
-            <div className="mb-4">
-              <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">Kime Görünsün?</label>
-              <select 
-                value={calStudentId} 
-                onChange={(e) => setCalStudentId(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-              >
-                <option value="all">📢 Tüm Sınıf (Herkes Görür)</option>
-                {students.map(st => (
-                  <option key={st.id} value={st.id}>👤 {st.name}</option>
-                ))}
-              </select>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
+      
+      {/* HEADER WITH FIREBASE STATUS */}
+      <header className="border-b border-slate-700/50 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setCurrentRole('guest'); setCurrentStudentUser(null); setCurrentParentUser(null); }}>
+            <div className="bg-gradient-to-tr from-amber-500 via-pink-500 to-purple-500 p-2.5 rounded-xl shadow-lg shadow-amber-500/20 text-white">
+              <GraduationCap className="h-6 w-6" />
             </div>
             <div>
-              <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">Ders Başlığı</label>
-              <input type="text" value={calTitle} onChange={e => setCalTitle(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500" placeholder="Örn: Limit ve Süreklilik" />
+              <span className="text-xl font-black tracking-tight bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
+                DERSLİKE
+              </span>
+              <p className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">TÜRKÇE*Ahmet Şahin</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">Tarih</label>
-                <input type="date" value={calDate} onChange={e => setCalDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none" />
-              </div>
-              <div>
-                <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">Saat</label>
-                <input type="time" value={calTime} onChange={e => setCalTime(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-[10px] text-slate-500 mb-1 font-bold uppercase tracking-widest">Açıklama</label>
-              <textarea value={calDesc} onChange={e => setCalDesc(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none min-h-[100px]" placeholder="Ders içeriği hakkında kısa bilgi..."></textarea>
-            </div>
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl text-sm transition-all shadow-lg shadow-blue-900/20">TAKVİME EKLE</button>
-          </form>
-        </div>
-      </div>
+          </div>
 
-      <div className="lg:col-span-2 space-y-6">
-        <h2 className="text-2xl font-black text-white">Ajanda</h2>
-        <div className="space-y-4">
-          {events.length === 0 ? (
-            <div className="p-12 text-center bg-slate-900/30 border border-dashed border-slate-800 rounded-3xl">
-              <CalendarIcon size={48} className="text-slate-800 mx-auto mb-4" />
-              <p className="text-slate-500 font-bold">Henüz planlanmış bir ders yok.</p>
+          <div className="flex items-center space-x-4">
+            {/* Realtime Firebase Badge indicator */}
+            <div className={`hidden sm:flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${firebaseStatus === 'Aktif (Canlı)' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
+              <Database className="h-3 w-3 animate-pulse" />
+              <span>ÖĞRETMEN BAĞLANTI DURUMU: {firebaseStatus}</span>
             </div>
-          ) : (
-            events.map(event => (
-              <div key={event.id} className="bg-slate-900/50 border border-slate-900 rounded-3xl p-6 flex items-start gap-6 hover:bg-slate-900 transition-all">
-                <div className="bg-blue-600 p-4 rounded-2xl text-center min-w-[80px]">
-                  <p className="text-[10px] text-blue-200 font-black uppercase">{new Date(event.date).toLocaleDateString('tr-TR', { month: 'short' })}</p>
-                  <p className="text-2xl font-black text-white">{new Date(event.date).getDate()}</p>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-white font-black text-lg">{event.title}</h3>
-                    <span className="bg-blue-500/10 text-blue-500 text-[10px] px-2 py-0.5 rounded font-black uppercase">{event.status}</span>
-                  </div>
-                  <p className="text-slate-500 text-sm leading-relaxed mb-4">{event.description}</p>
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold">
-                      <Clock size={14} className="text-blue-500" /> {event.time}
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                      <User size={14} className="text-blue-500" /> {event.studentId === 'all' ? 'Tüm Sınıf' : 'Özel Ders'}
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => deleteItem('event', event.id)} className="p-2 text-slate-800 hover:text-red-500 transition-colors">
-                  <Trash2 size={20} />
+
+            {currentRole === 'teacher' && (
+              <div className="flex items-center space-x-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-3 py-1.5 rounded-lg">
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                <span className="text-xs font-semibold text-amber-300 flex items-center space-x-1">
+                  <Shield className="h-3 w-3" />
+                  <span>Öğretmen</span>
+                </span>
+                <button onClick={() => setCurrentRole('guest')} className="text-slate-400 hover:text-white transition-colors text-xs flex items-center space-x-1 pl-2 border-l border-slate-600">
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Çıkış</span>
                 </button>
               </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
+            )}
 
-  // --- STUDENT PANEL ---
-  const StudentLayout = () => {
-    const [studentTab, setStudentTab] = useState('dashboard');
-    
-    return (
-      <div className="min-h-screen bg-slate-950 flex">
-        <div className="fixed inset-y-0 left-0 w-20 lg:w-72 bg-slate-950 border-r border-slate-900 flex flex-col p-4 lg:p-6 transition-all">
-          <div className="flex items-center gap-3 mb-12 lg:px-2">
-            <div className="p-2 bg-purple-600 rounded-lg">
-              <GraduationCap className="text-white" size={24} />
-            </div>
-            <span className="hidden lg:inline text-xl font-black text-white tracking-tighter">DERSLİNK <span className="text-purple-500">STUDENT</span></span>
-          </div>
-
-          <nav className="flex-1 space-y-4">
-            <button onClick={() => setStudentTab('dashboard')} className={`w-full flex items-center gap-4 p-3 lg:px-4 lg:py-3 rounded-2xl transition-all ${studentTab === 'dashboard' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-white hover:bg-slate-900'}`}>
-              <LayoutDashboard size={24} /> <span className="hidden lg:inline font-bold">Panel</span>
-            </button>
-            <button onClick={() => setStudentTab('docs')} className={`w-full flex items-center gap-4 p-3 lg:px-4 lg:py-3 rounded-2xl transition-all ${studentTab === 'docs' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-white hover:bg-slate-900'}`}>
-              <BookOpen size={24} /> <span className="hidden lg:inline font-bold">Dersler</span>
-            </button>
-            <button onClick={() => setStudentTab('calendar')} className={`w-full flex items-center gap-4 p-3 lg:px-4 lg:py-3 rounded-2xl transition-all ${studentTab === 'calendar' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-white hover:bg-slate-900'}`}>
-              <Calendar size={24} /> <span className="hidden lg:inline font-bold">Takvim</span>
-            </button>
-          </nav>
-
-          <button onClick={() => setUserRole(null)} className="flex items-center gap-4 p-3 lg:px-4 lg:py-3 rounded-2xl text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all mt-auto">
-            <LogOut size={24} /> <span className="hidden lg:inline font-bold">Çıkış</span>
-          </button>
-        </div>
-
-        <main className="flex-1 ml-20 lg:ml-72 p-4 lg:p-10">
-          <div className="max-w-6xl mx-auto space-y-8">
-            <header className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-black text-white">Selam, {currentStudentUser?.name} ✨</h1>
-                <p className="text-slate-500 mt-1">Öğrenme yolculuğuna devam et!</p>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right hidden sm:block">
-                  <p className="text-white text-xs font-black">Puan: 1,240</p>
-                  <p className="text-purple-500 text-[10px] font-bold uppercase">Sıralama: #4</p>
+            {currentRole === 'student' && currentStudentUser && (
+              <div className="flex items-center space-x-3 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 px-3 py-1.5 rounded-lg">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 text-white text-[10px] font-bold flex items-center justify-center">
+                  {currentStudentUser.name.charAt(0)}
                 </div>
-                <img src={currentStudentUser?.avatar} className="w-12 h-12 rounded-2xl border-2 border-slate-800" alt="" />
+                <span className="text-xs font-semibold text-emerald-300">{currentStudentUser.name}</span>
+                <button onClick={() => { setCurrentRole('guest'); setCurrentStudentUser(null); }} className="text-slate-400 hover:text-white transition-colors text-xs flex items-center space-x-1 pl-2 border-l border-slate-600">
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Çıkış</span>
+                </button>
               </div>
-            </header>
+            )}
 
-            {studentTab === 'dashboard' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-8">
-                  <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-3xl p-8 shadow-xl shadow-purple-900/20">
-                    <h3 className="text-white font-black text-2xl mb-2">Google Takvim Entegrasyonu</h3>
-                    <p className="text-purple-100 mb-6 max-w-md">Tüm derslerin ve ödevlerin Google Takvim'in ile senkronize. Hiçbirini kaçırma!</p>
-                    <button className="bg-white text-purple-600 font-black px-6 py-3 rounded-xl text-sm flex items-center gap-2 transition-transform active:scale-95">
-                      <CalendarIcon size={18} /> TAKVİMİ AÇ
-                    </button>
+            {currentRole === 'parent' && currentParentUser && (
+              <div className="flex items-center space-x-3 bg-gradient-to-r from-rose-500/20 to-pink-500/20 border border-rose-500/30 px-3 py-1.5 rounded-lg">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-rose-400 to-pink-400 text-white text-[10px] font-bold flex items-center justify-center">
+                  <Heart className="h-3 w-3" />
+                </div>
+                <span className="text-xs font-semibold text-rose-300">{currentParentUser.name}</span>
+                <button onClick={() => { setCurrentRole('guest'); setCurrentParentUser(null); }} className="text-slate-400 hover:text-white transition-colors text-xs flex items-center space-x-1 pl-2 border-l border-slate-600">
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Çıkış</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* MAIN */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* GUEST / LOGIN SCREEN */}
+        {currentRole === 'guest' && (
+          <div className="max-w-5xl mx-auto space-y-12 py-6">
+            <div className="text-center space-y-4 max-w-2xl mx-auto">
+              <div className="inline-flex bg-gradient-to-r from-emerald-500/20 via-pink-500/20 to-amber-500/20 text-emerald-300 text-xs px-4 py-1.5 rounded-full font-bold tracking-wide items-center space-x-2 border border-emerald-500/30">
+                <Wifi className="h-3.5 w-3.5 animate-bounce" />
+                <span>Firebase Bağlantı Modu: {firebaseStatus}</span>
+              </div>
+              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
+                DİJİTAL EĞİTİM PLATFORMU <br/>
+                <span className="bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">Sınıfım360</span>
+              </h1>
+              <p className="text-slate-400 text-base sm:text-lg">
+                Gerçek zamanlı veritabanı senkronizasyonu, PDF yükleme, ekran kaydı ve ayrıcalıklı renkli portallar.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* TEACHER */}
+              <div className="bg-gradient-to-b from-slate-950 to-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 relative overflow-hidden group hover:border-amber-500/60 transition-all flex flex-col justify-between shadow-2xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all"></div>
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg">
+                    <Shield className="h-6 w-6" />
                   </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+                      <span>Öğretmen</span>
+                      <span className="text-[10px] font-normal bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-bold">Şifreli</span>
+                    </h2>
+                    <p className="text-slate-400 text-xs mt-2">Öğrenci/veli kaydı, PDF yükleme, Firebase veri gönderimi.</p>
+                  </div>
+                  <form onSubmit={handleTeacherLogin} className="space-y-3 pt-2">
+                    {teacherError && (
+                      <div className="p-2 text-xs bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg flex items-center space-x-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>{teacherError}</span>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs text-slate-400 font-medium mb-1 flex items-center space-x-1">
+                        <Lock className="h-3 w-3" />
+                        <span>Şifre</span>
+                      </label>
+                      <input type="password" value={teacherPass} onChange={(e) => setTeacherPass(e.target.value)} placeholder="IŞIK SAÇAR" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                    </div>
+                    <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold py-2.5 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center space-x-2 cursor-pointer text-sm">
+                      <span>Giriş Yap</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </form>
+                </div>
+              </div>
 
-                  <div className="space-y-4">
-                    <h3 className="text-xl font-black text-white">Bekleyen Ödevlerin</h3>
-                    <div className="grid gap-4">
-                      {assignments.map(asg => (
-                        <div key={asg.id} className="bg-slate-900 border border-slate-800 p-6 rounded-3xl flex items-center justify-between group hover:border-purple-500 transition-all">
-                          <div className="flex items-center gap-4">
-                            <div className="p-3 bg-purple-500/10 rounded-2xl group-hover:bg-purple-500 transition-all"><FileText className="text-purple-500 group-hover:text-white" /></div>
-                            <div>
-                              <p className="text-white font-bold">{asg.title}</p>
-                              <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{asg.category} • Son Tarih: {asg.deadline}</p>
+              {/* STUDENT */}
+              <div className="bg-gradient-to-b from-slate-950 to-slate-900 border border-emerald-500/30 rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-xl">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-lg">
+                    <GraduationCap className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Öğrenci</h2>
+                    <p className="text-slate-400 text-xs mt-2">Eğitim süreçlerini tek bir merkezden yönetmek hiç bu kadar kolay olmamıştı. Öğretmenler,öğrenciler VE Veliler için özel olarak tasarlanan bu platform, Google ekosistemiyle tam uyumlu çalışarak kağıt karmaşasına son veriyor.</p>
+                  </div>
+                  <form onSubmit={handleStudentLogin} className="space-y-3 pt-2">
+                    {loginError && (
+                      <div className="p-2 text-xs bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg">{loginError}</div>
+                    )}
+                    <div>
+                      <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
+                      <input type="text" value={studentLoginUser} onChange={(e) => setStudentLoginUser(e.target.value)} placeholder="Bilgi Arar" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
+                      <input type="password" value={studentLoginPass} onChange={(e) => setStudentLoginPass(e.target.value)} placeholder="••••" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                    </div>
+                    {students.length === 0 && (
+                      <p className="text-[11px] text-amber-400/90 italic bg-slate-900 p-2 rounded-lg border border-slate-800">⚠️ Henüz öğrenci yok. Öğretmen eklemeli.</p>
+                    )}
+                    <button type="submit" disabled={students.length === 0} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center space-x-2 text-sm">
+                      <span>Öğrenci Girişi</span>
+                      <Check className="h-4 w-4" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* PARENT */}
+              <div className="bg-gradient-to-b from-slate-950 to-slate-900 border border-rose-500/30 rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-xl">
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center text-white shadow-lg">
+                    <Heart className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Veli</h2>
+                    <p className="text-slate-400 text-xs mt-2">Canlı ders ekran kayıtları ve çocuk performansı.</p>
+                  </div>
+                  <form onSubmit={handleParentLogin} className="space-y-3 pt-2">
+                    {parentLoginError && (
+                      <div className="p-2 text-xs bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg">{parentLoginError}</div>
+                    )}
+                    <div>
+                      <label className="block text-xs text-slate-400 font-medium mb-1">Kullanıcı Adı</label>
+                      <input type="text" value={parentLoginUser} onChange={(e) => setParentLoginUser(e.target.value)} placeholder="Kanat gerer." className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 font-medium mb-1">Şifre</label>
+                      <input type="password" value={parentLoginPass} onChange={(e) => setParentLoginPass(e.target.value)} placeholder="••••" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                    </div>
+                    {parents.length === 0 && (
+                      <p className="text-[11px] text-amber-400/90 italic bg-slate-900 p-2 rounded-lg border border-slate-800">⚠️ Henüz veli yok. Öğretmen eklemeli.</p>
+                    )}
+                    <button type="submit" disabled={parents.length === 0} className="w-full bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-semibold py-2.5 px-4 rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center space-x-2 text-sm">
+                      <span>Veli Girişi</span>
+                      <Check className="h-4 w-4" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="bg-slate-950/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+              <div className="flex items-center space-x-3 text-slate-400">
+                <FileSpreadsheet className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                <span><strong>Öğretmen Bağlısınız:</strong>   Ahmet ŞAHİN (<code className="bg-slate-900 px-1.5 py-0.5 rounded text-amber-200">veliogrenci-cce71</code>) ÖĞRETMENİM İYİ Kİ VAR..</span>
+              </div>
+              <div className="text-slate-500 font-mono text-[10px] whitespace-nowrap bg-slate-900 px-2 py-1 rounded">ÖZEL DERS</div>
+            </div>
+          </div>
+        )}
+
+        {/* TEACHER DASHBOARD */}
+        {currentRole === 'teacher' && (
+          <div className="space-y-8">
+            <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-700/50 flex flex-wrap gap-1 backdrop-blur">
+              <button onClick={() => setTeacherTab('dashboard')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'dashboard' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <TrendingUp className="h-4 w-4" /><span>Genel Analiz</span>
+              </button>
+              <button onClick={() => setTeacherTab('students')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'students' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <UserPlus className="h-4 w-4" /><span>Öğrenciler ({students.length})</span>
+              </button>
+              <button onClick={() => setTeacherTab('parents')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'parents' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <Users className="h-4 w-4" /><span>Veliler ({parents.length})</span>
+              </button>
+              <button onClick={() => setTeacherTab('documents')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'documents' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <FileText className="h-4 w-4" /><span>Dokümanlar ({documents.length})</span>
+              </button>
+              <button onClick={() => setTeacherTab('assignments')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'assignments' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <ClipboardList className="h-4 w-4" /><span>Ödev & Sınav</span>
+              </button>
+              <button onClick={() => setTeacherTab('summaries')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'summaries' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <FileCheck className="h-4 w-4" /><span>Özetler</span>
+              </button>
+              <button onClick={() => setTeacherTab('calendar')} className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${teacherTab === 'calendar' ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                <CalendarDays className="h-4 w-4" /><span>Takvim</span>
+              </button>
+            </div>
+
+            {teacherTab === 'dashboard' && (
+              <div className="space-y-8 animate-fadeIn">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-5 rounded-2xl border border-amber-500/30 space-y-1">
+                    <span className="text-slate-400 text-xs font-medium">Öğrenci</span>
+                    <p className="text-3xl font-black text-amber-400">{students.length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-rose-500/10 to-pink-500/10 p-5 rounded-2xl border border-rose-500/30 space-y-1">
+                    <span className="text-slate-400 text-xs font-medium">Veli</span>
+                    <p className="text-3xl font-black text-rose-400">{parents.length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 p-5 rounded-2xl border border-blue-500/30 space-y-1">
+                    <span className="text-slate-400 text-xs font-medium">Doküman</span>
+                    <p className="text-3xl font-black text-blue-400">{documents.length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-5 rounded-2xl border border-emerald-500/30 space-y-1">
+                    <span className="text-slate-400 text-xs font-medium">Teslim Edilen</span>
+                    <p className="text-3xl font-black text-emerald-400">{assignments.filter(a => a.status === 'Tamamlandı').length}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-500/10 to-violet-500/10 p-5 rounded-2xl border border-purple-500/30 space-y-1">
+                    <span className="text-slate-400 text-xs font-medium">Takvim Dersi</span>
+                    <p className="text-3xl font-black text-purple-400">{events.length}</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 space-y-4 backdrop-blur">
+                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <BarChart3 className="h-5 w-5 text-amber-400" />
+                    <span>Öğrenci Performans Analizi</span>
+                  </h3>
+                  {students.length === 0 ? (
+                    <div className="text-center py-12 border border-dashed border-slate-700 rounded-xl">
+                      <UserPlus className="h-8 w-8 text-slate-600 mx-auto" />
+                      <p className="text-sm text-slate-400 mt-2">Henüz öğrenci kaydedilmemiş.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {students.map(student => {
+                        const perf = getStudentPerformance(student.id);
+                        const linkedParent = parents.find(p => p.linkedStudentIds.includes(student.id));
+                        return (
+                          <div key={student.id} className="p-4 bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl border border-slate-700 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-amber-400 to-orange-400 text-slate-950 font-bold flex items-center justify-center text-[10px]">
+                                  {student.name.charAt(0)}
+                                </div>
+                                <span className="font-bold text-white">{student.name}</span>
+                                <span className="text-[11px] text-slate-500">(@{student.username})</span>
+                                {linkedParent && (
+                                  <span className="text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/30 flex items-center space-x-1">
+                                    <Heart className="h-2.5 w-2.5" />
+                                    <span>{linkedParent.name}</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-right space-x-2">
+                                <span className="text-xs text-emerald-400 font-mono">{perf.done} Tamamlandı</span>
+                                <span className="text-xs text-slate-400 font-mono">/ {perf.total}</span>
+                              </div>
+                            </div>
+                            <div className="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-700">
+                              <div className="bg-gradient-to-r from-amber-500 via-pink-500 to-purple-500 h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(perf.percentage, 3)}%` }}></div>
+                            </div>
+                            <div className="flex justify-between text-[10px] text-slate-500">
+                              <span>Başarı Oranı: %{perf.percentage}</span>
+                              <span>{perf.percentage === 100 ? '🔥 Eksiksiz' : perf.percentage > 50 ? '👍 İyi' : '⚠️ Takip'}</span>
                             </div>
                           </div>
-                          <button className="bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-black hover:bg-white hover:text-black transition-all">TESLİM ET</button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {teacherTab === 'students' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                    <UserPlus className="h-5 w-5 text-amber-400" />
+                    <span>Öğrenci Kayıt ve Firebase Senkronizasyonu</span>
+                  </h3>
+                </div>
+                <form onSubmit={handleAddStudent} className="p-4 bg-slate-900 rounded-xl border border-slate-700 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">Ad Soyad</label>
+                    <input type="text" value={newStudentName} onChange={(e) => setNewStudentName(e.target.value)} placeholder="Ahmet Yılmaz" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">Kullanıcı Adı</label>
+                    <input type="text" value={newStudentUser} onChange={(e) => setNewStudentUser(e.target.value)} placeholder="ahmet123" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">Şifre</label>
+                    <input type="text" value={newStudentPass} onChange={(e) => setNewStudentPass(e.target.value)} placeholder="987654" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                  <div>
+                    <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs cursor-pointer">Veritabanına Ekle</button>
+                  </div>
+                </form>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-slate-300">Öğrenciler ({students.length})</h4>
+                  {students.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-700 text-xs">Henüz öğrenci yok.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs text-slate-300 bg-slate-900 rounded-xl overflow-hidden border border-slate-700">
+                        <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-700">
+                          <tr>
+                            <th className="p-3">Ad Soyad</th>
+                            <th className="p-3">Kullanıcı Adı</th>
+                            <th className="p-3">Şifre</th>
+                            <th className="p-3">Bağlı Veli</th>
+                            <th className="p-3">Öğrenci Hakkında Not</th>
+                            <th className="p-3 text-right">Eylem</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-700">
+                          {students.map(s => {
+                            const linkedParent = parents.find(p => p.linkedStudentIds.includes(s.id));
+                            return (
+                              <tr key={s.id} className="hover:bg-slate-950/50 transition-colors">
+                                <td className="p-3 font-bold text-white flex items-center space-x-2">
+                                  <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-400 to-orange-400 text-slate-950 font-bold flex items-center justify-center text-[9px]">{s.name.charAt(0)}</div>
+                                  <span>{s.name}</span>
+                                </td>
+                                <td className="p-3 font-mono text-amber-300">{s.username}</td>
+                                <td className="p-3 font-mono text-slate-300">{s.passwordHash}</td>
+                                <td className="p-3">
+                                  {linkedParent ? <span className="text-[10px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/30">{linkedParent.name}</span> : <span className="text-[10px] text-slate-500">-</span>}
+                                </td>
+                                <td className="p-3">
+                                  {editingStudentId === s.id ? (
+                                    <div className="flex items-center space-x-2">
+                                      <input type="text" value={editNotesValue} onChange={(e) => setEditNotesValue(e.target.value)} className="bg-slate-950 text-xs text-white px-2 py-1 rounded border border-slate-600 w-48 focus:outline-none" />
+                                      <button onClick={() => handleUpdateStudentNotes(s.id)} className="text-emerald-400 hover:text-emerald-300 font-bold"><Save className="h-4 w-4 inline" /></button>
+                                      <button onClick={() => { setEditingStudentId(null); setEditNotesValue(''); }} className="text-slate-400 hover:text-white"><X className="h-4 w-4 inline" /></button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-xs text-slate-400 truncate max-w-xs">{s.teacherNotes || 'Not yazılmamış'}</span>
+                                      <button onClick={() => { setEditingStudentId(s.id); setEditNotesValue(s.teacherNotes || ''); }} className="text-amber-400 hover:text-amber-300"><PenLine className="h-3.5 w-3.5" /></button>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right">
+                                  <button onClick={() => handleDeleteStudent(s.id)} className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 cursor-pointer"><Trash2 className="h-4 w-4 inline" /></button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {teacherTab === 'parents' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                    <Users className="h-5 w-5 text-rose-400" />
+                    <span>Veli Kayıt ve Öğrenci Eşleştirme</span>
+                  </h3>
+                </div>
+                <form onSubmit={handleAddParent} className="p-4 bg-slate-900 rounded-xl border border-slate-700 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">Ad Soyad</label>
+                      <input type="text" value={newParentName} onChange={(e) => setNewParentName(e.target.value)} placeholder="Ayşe Yılmaz" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">Kullanıcı Adı</label>
+                      <input type="text" value={newParentUser} onChange={(e) => setNewParentUser(e.target.value)} placeholder="veli_ayse" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-1.5">Şifre</label>
+                      <input type="text" value={newParentPass} onChange={(e) => setNewParentPass(e.target.value)} placeholder="veli123" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 uppercase tracking-wide mb-2">Eşleştirilecek Öğrenciler</label>
+                    {students.length === 0 ? (
+                      <p className="text-xs text-slate-500 bg-slate-950 p-3 rounded-lg border border-slate-700">Önce öğrenci kaydedin.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {students.map(s => (
+                          <button key={s.id} type="button" onClick={() => toggleParentStudentLink(s.id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${newParentLinkedStudents.includes(s.id) ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white border-rose-500' : 'bg-slate-950 text-slate-300 border-slate-700 hover:border-rose-500/50'}`}>
+                            {newParentLinkedStudents.includes(s.id) && '✓ '}{s.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <button type="submit" className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold px-6 py-2 rounded-lg text-xs transition-colors cursor-pointer">Firebase'e Kaydet</button>
+                  </div>
+                </form>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-slate-300">Veliler ({parents.length})</h4>
+                  {parents.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-700 text-xs">Henüz veli yok.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {parents.map(p => {
+                        const linkedStudents = getLinkedStudents(p);
+                        return (
+                          <div key={p.id} className="p-4 bg-slate-900 rounded-xl border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-rose-400 to-pink-400 text-white font-bold flex items-center justify-center text-[10px]"><Heart className="h-3 w-3" /></div>
+                                <span className="font-bold text-white text-sm">{p.name}</span>
+                                <span className="text-[11px] text-slate-500">(@{p.username})</span>
+                              </div>
+                              <div className="flex items-center space-x-2 text-xs text-slate-400">
+                                <span>Şifre: <code className="text-rose-300">{p.passwordHash}</code></span>
+                                <span>|</span>
+                                <span>Kayıt: {p.createdAt}</span>
+                              </div>
+                              <div className="flex items-center space-x-1 flex-wrap gap-1 mt-1">
+                                <span className="text-[10px] text-slate-400">Öğrenciler:</span>
+                                {linkedStudents.length > 0 ? linkedStudents.map(s => (
+                                  <span key={s.id} className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30">{s.name}</span>
+                                )) : <span className="text-[10px] text-slate-500">Yok</span>}
+                              </div>
+                            </div>
+                            <button onClick={() => handleDeleteParent(p.id)} className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 cursor-pointer self-end"><Trash2 className="h-4 w-4" /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {teacherTab === 'documents' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-4 border-b border-slate-700">
+                  <div className="lg:col-span-2 space-y-1">
+                    <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                      <FileText className="h-5 w-5 text-amber-400" />
+                      <span>Doküman & PDF Direkt Firebase Yükleme</span>
+                    </h3>
+                  </div>
+                  <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-2">
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase">Yeni Kategori Ekle</label>
+                    <form onSubmit={handleAddCategory} className="flex space-x-1">
+                      <input type="text" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Kategori" className="bg-slate-950 text-xs text-white px-2 py-1.5 rounded border border-slate-700 w-full focus:outline-none focus:border-amber-500" />
+                      <button type="submit" className="bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs px-2.5 rounded font-bold border border-amber-500/30 cursor-pointer">+</button>
+                    </form>
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {categories.map(c => (
+                        <span key={c} className="text-[10px] bg-slate-950 text-slate-300 px-2 py-0.5 rounded flex items-center space-x-1 border border-slate-700">
+                          <span>{c}</span>
+                          <button type="button" onClick={() => handleRemoveCategory(c)} className="text-rose-400 font-bold hover:text-rose-300 pl-1">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddDocument} className="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-4">
+                  <h4 className="text-sm font-bold text-amber-400">Doküman Detay Formu</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">Başlık</label>
+                      <input type="text" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder="Doküman başlığı" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">Kategori</label>
+                      <select value={docCategory} onChange={(e) => setDocCategory(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                        <option value="">-- Seçiniz --</option>
+                        {categories.map(c => (<option key={c} value={c}>{c}</option>))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">Tip</label>
+                      <select value={docType} onChange={(e) => setDocType(e.target.value as typeof docType)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                        <option value="google-doc">📝 Google Doc</option>
+                        <option value="video">🎥 Video</option>
+                        <option value="pdf">📄 PDF Dosyası (Doğrudan Yükle)</option>
+                        <option value="summary">📚 Özet</option>
+                        <option value="link">🌐 Diğer</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        {docType === 'pdf' ? 'PDF Dosyası Seç' : 'URL / Link'}
+                      </label>
+                      {docType === 'pdf' ? (
+                        <input type="file" accept=".pdf" onChange={handleFileChange} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
+                      ) : (
+                        <input type="text" value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://..." className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 text-amber-300" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-slate-950 p-2 rounded-lg text-xs">
+                    <span className="text-slate-400 font-semibold">⚡ Hızlı Şablonlar:</span>
+                    <button type="button" onClick={() => { setDocType('google-doc'); insertSampleGoogleDoc('doc'); }} className="bg-slate-800 hover:bg-slate-700 text-amber-400 px-2 py-1 rounded border border-slate-700">Google Doc Linki</button>
+                    <button type="button" onClick={() => { setDocType('video'); insertSampleGoogleDoc('video'); }} className="bg-slate-800 hover:bg-slate-700 text-purple-400 px-2 py-1 rounded border border-slate-700">Video Linki</button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Notlar</label>
+                    <textarea value={docNotes} onChange={(e) => setDocNotes(e.target.value)} placeholder="Öğrenciye talimatlar..." rows={2} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
+                  </div>
+                  <div className="text-right">
+                    <button type="submit" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-6 py-2 rounded-lg text-xs transition-colors cursor-pointer">Firebase'e Yayınla</button>
+                  </div>
+                </form>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-300">Yüklenen Dokümanlar</h4>
+                  {documents.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500 bg-slate-900/40 rounded-xl border border-dashed border-slate-700 text-xs">Henüz doküman yok.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {documents.map(doc => (
+                        <div key={doc.id} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 flex flex-col justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-400 font-bold px-2 py-0.5 rounded border border-amber-500/30">{doc.category}</span>
+                              <span className="text-[10px] text-slate-500 font-mono">{doc.createdAt}</span>
+                            </div>
+                            <h5 className="text-sm font-bold text-white pt-1 flex items-center space-x-2">
+                              {doc.type === 'pdf' && <FileUp className="h-4 w-4 text-red-400" />}
+                              {doc.type === 'google-doc' && <FileText className="h-4 w-4 text-blue-400" />}
+                              {doc.type === 'video' && <Video className="h-4 w-4 text-purple-400" />}
+                              <span>{doc.title}</span>
+                            </h5>
+                            {doc.fileName && <p className="text-[10px] text-amber-300">📄 {doc.fileName}</p>}
+                            <p className="text-xs text-slate-400 italic bg-slate-950/40 p-2 rounded border border-slate-700/60 mt-1 line-clamp-2">{doc.teacherNotes}</p>
+                          </div>
+                          <div className="pt-2 flex items-center justify-between border-t border-slate-700 text-xs">
+                            <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} download={doc.type === 'pdf' ? doc.fileName || 'dokuman.pdf' : undefined} rel="noreferrer" className="text-amber-400 hover:underline flex items-center space-x-1 font-semibold">
+                              <span>{doc.type === 'pdf' ? 'İndir / Aç' : 'Aç'}</span><ExternalLink className="h-3 w-3" />
+                            </a>
+                            <button onClick={() => handleDeleteDocument(doc.id)} className="text-rose-400 hover:text-rose-300 font-semibold flex items-center space-x-1">
+                              <Trash2 className="h-3 w-3" /><span>Sil</span>
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {teacherTab === 'assignments' && (
+              <div className="space-y-8 animate-fadeIn">
+                <div className="bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 space-y-4 backdrop-blur">
+                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <ClipboardList className="h-5 w-5 text-amber-400" />
+                    <span>Ödev Dağıtımı</span>
+                  </h3>
+                  <form onSubmit={handleCreateAssignment} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Öğrenci</label>
+                        <select value={assignStudentId} onChange={(e) => setAssignStudentId(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                          <option value="all">📢 TÜM ÖĞRENCİLER</option>
+                          {students.map(s => (<option key={s.id} value={s.id}>👤 {s.name}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Başlık</label>
+                        <input type="text" value={assignTitle} onChange={(e) => setAssignTitle(e.target.value)} placeholder="Ödev başlığı" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Son Tarih</label>
+                        <input type="date" value={assignDueDate} onChange={(e) => setAssignDueDate(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 text-amber-400" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">Talimatlar</label>
+                      <textarea value={assignDesc} onChange={(e) => setAssignDesc(e.target.value)} placeholder="Detaylar..." rows={2} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500" />
+                    </div>
+                    <div className="text-right">
+                      <button type="submit" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-5 py-2 rounded-lg text-xs cursor-pointer">Firebase'e Dağıt</button>
+                    </div>
+                  </form>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-                    <h3 className="text-white font-black text-lg mb-4">Yeni Gelen Sınavlar</h3>
-                    <div className="space-y-4">
-                      {exams.map(exm => (
-                        <a key={exm.id} href={exm.url} target="_blank" rel="noreferrer" className="block p-4 bg-slate-950 border border-slate-800 rounded-2xl hover:border-amber-500 transition-all group">
-                          <p className="text-white font-bold text-sm mb-1">{exm.title}</p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-600 text-[10px] font-bold">{exm.deadline}</span>
-                            <span className="text-amber-500 text-[10px] font-black group-hover:translate-x-1 transition-transform flex items-center gap-1">KATIL <ChevronRight size={10} /></span>
-                          </div>
-                        </a>
-                      ))}
+                <div className="bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 space-y-4 backdrop-blur">
+                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <Layers className="h-5 w-5 text-blue-400" />
+                    <span>Sınav Linkleri</span>
+                  </h3>
+                  <form onSubmit={handleCreateExam} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Sınav Adı</label>
+                        <input type="text" value={examTitle} onChange={(e) => setExamTitle(e.target.value)} placeholder="Sınav başlığı" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Kategori</label>
+                        <input type="text" value={examCat} onChange={(e) => setExamCat(e.target.value)} placeholder="Deneme" className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Link</label>
+                        <input type="text" value={examUrl} onChange={(e) => setExamUrl(e.target.value)} placeholder="https://..." className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 text-blue-400" />
+                      </div>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <button type="button" onClick={() => insertSampleGoogleDoc('exam')} className="text-xs text-blue-400 hover:underline">⚡ Örnek Forms</button>
+                      <button type="submit" className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-bold px-5 py-2 rounded-lg text-xs cursor-pointer">Yayına Al</button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-700 space-y-3 backdrop-blur">
+                    <h4 className="text-sm font-bold text-slate-200">Ödevler</h4>
+                    {assignments.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">Ödev yok.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {assignments.map(a => {
+                          const targetStudent = students.find(s => s.id === a.studentId);
+                          return (
+                            <div key={a.id} className="p-2.5 bg-slate-900 rounded-lg text-xs border border-slate-700 flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-white">{a.title}</p>
+                                <p className="text-[10px] text-slate-400">Kime: {a.studentId === 'all' ? 'Tüm Sınıf' : targetStudent?.name}</p>
+                                <p className="text-[10px] text-amber-400">Son: {a.dueDate}</p>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <span className={`px-2 py-0.5 rounded text-[9px] ${a.status === 'Tamamlandı' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>{a.status}</span>
+                                <button onClick={() => handleDeleteAssignment(a.id)} className="text-rose-400 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-700 space-y-3 backdrop-blur">
+                    <h4 className="text-sm font-bold text-slate-200">Sınavlar</h4>
+                    {exams.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">Sınav yok.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {exams.map(e => (
+                          <div key={e.id} className="p-2.5 bg-slate-900 rounded-lg text-xs border border-slate-700 flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-white">{e.title}</p>
+                              <p className="text-[10px] text-slate-400">{e.category}</p>
+                            </div>
+                            <button onClick={() => handleDeleteExam(e.id)} className="text-rose-400 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {studentTab === 'docs' && (
-              <div className="space-y-8">
-                <div className="flex flex-wrap gap-2">
-                  {categories.map(cat => (
-                    <button key={cat} className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 text-xs font-bold hover:bg-purple-600 hover:text-white transition-all">{cat}</button>
-                  ))}
+            {teacherTab === 'summaries' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                  <FileCheck className="h-5 w-5 text-emerald-400" />
+                  <span>Gelen Özetler</span>
+                </h3>
+                {assignments.filter(a => a.status === 'Tamamlandı').length === 0 ? (
+                  <div className="p-12 text-center text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-700">
+                    <Clock className="h-8 w-8 text-slate-700 mx-auto" />
+                    <p className="text-sm mt-2">Henüz özet yok.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {assignments.filter(a => a.status === 'Tamamlandı').map(item => {
+                      const studentInfo = students.find(s => s.id === item.studentId);
+                      return (
+                        <div key={item.id} className="p-5 bg-slate-900 rounded-xl border border-slate-700 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700 pb-2">
+                            <div>
+                              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold uppercase mr-2">Teslim Edildi</span>
+                              <strong className="text-xs text-white">{studentInfo?.name || 'Genel'}</strong>
+                            </div>
+                            <span className="text-[11px] text-slate-500 font-mono">{item.submittedAt}</span>
+                          </div>
+                          <h4 className="text-sm font-bold text-white">{item.title}</h4>
+                          <p className="text-xs text-slate-300 bg-slate-950 p-3 rounded border border-slate-700">{item.studentNotes}</p>
+                          <a href={item.submissionUrl} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline text-xs flex items-center space-x-1">
+                            <span>{item.submissionUrl}</span><ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {teacherTab === 'calendar' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                    <Calendar className="h-5 w-5 text-purple-400" />
+                    <span>Takvim & Kayıtlar</span>
+                  </h3>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {documents.map(doc => (
-                    <div key={doc.id} className="bg-slate-900/50 border border-slate-900 rounded-3xl p-6 hover:bg-slate-900 transition-all group">
-                      <div className="p-4 bg-slate-950 rounded-2xl w-14 h-14 flex items-center justify-center mb-6">
-                        {doc.type === 'video' ? <Video className="text-red-500" /> : <FileDown className="text-purple-500" />}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-4">
+                    <h4 className="text-xs font-bold text-purple-400 uppercase tracking-wider">Yeni Ders</h4>
+                    <form onSubmit={handleCreateCalendarEvent} className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Başlık</label>
+                        <input type="text" value={calTitle} onChange={(e) => setCalTitle(e.target.value)} placeholder="Ders adı" className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none" />
                       </div>
-                      <h3 className="text-white font-bold mb-1">{doc.title}</h3>
-                      <p className="text-slate-500 text-[10px] font-black uppercase mb-6 tracking-widest">{doc.category}</p>
-                      <a href={doc.url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full py-3 bg-purple-600 hover:bg-purple-500 text-white text-xs font-black rounded-xl transition-all">
-                        {doc.type === 'video' ? 'İZLEMEYE BAŞLA' : 'DOSYAYI İNDİR'}
-                      </a>
-                    </div>
-                  ))}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">Tarih</label>
+                          <input type="date" value={calDate} onChange={(e) => setCalDate(e.target.value)} className="w-full bg-slate-950 text-xs text-amber-400 p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">Saat</label>
+                          <input type="time" value={calTime} onChange={(e) => setCalTime(e.target.value)} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Detay</label>
+                        <textarea value={calDesc} onChange={(e) => setCalDesc(e.target.value)} placeholder="Detaylar..." rows={2} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none" />
+                      </div>
+                      <button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white text-xs font-bold py-2 rounded-lg cursor-pointer">Firebase Takvime Ekle</button>
+                    </form>
+                  </div>
+                  <div className="lg:col-span-2 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Dersler</h4>
+                    {events.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-6 text-center">Ders yok.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {events.map(evt => (
+                          <div key={evt.id} className={`p-4 rounded-xl border transition-all ${evt.status.includes('Ders Yapıldı') ? 'bg-slate-900/40 border-slate-700 opacity-70' : 'bg-slate-900 border-purple-500/30'}`}>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div>
+                                <span className={`text-[9px] px-2 py-0.5 rounded font-bold mr-2 ${evt.status.includes('Ders Yapıldı') ? 'bg-slate-950 text-slate-400' : 'bg-purple-500/20 text-purple-300'}`}>{evt.status}</span>
+                                <span className="text-xs font-mono text-slate-400">{evt.date} @ {evt.time}</span>
+                              </div>
+                              <button onClick={() => handleDeleteEvent(evt.id)} className="text-slate-500 hover:text-rose-400 text-xs">Sil</button>
+                            </div>
+                            <h5 className="text-sm font-bold text-white mt-1">{evt.title}</h5>
+                            <p className="text-xs text-slate-400 mt-1">{evt.description}</p>
+                            {evt.recordingUrl && (
+                              <div className="mt-2 p-2 bg-blue-500/10 rounded-lg border border-blue-500/20 text-xs flex items-center space-x-2">
+                                <MonitorPlay className="h-4 w-4 text-blue-400" />
+                                <a href={evt.recordingUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center space-x-1">
+                                  <span>Kayıt Linki</span><ExternalLink className="h-3 w-3" />
+                                </a>
+                              </div>
+                            )}
+                            {evt.status === 'Planlandı' && (
+                              <div className="mt-3 pt-3 border-t border-slate-700 bg-slate-950 p-2.5 rounded-lg space-y-2">
+                                <p className="text-[11px] text-amber-400 font-semibold">⚡ Tamamla & İşle:</p>
+                                <div className="space-y-2">
+                                  <input type="text" id={`notes-${evt.id}`} placeholder="Öğretmen notu..." className="bg-slate-900 text-xs text-white p-1.5 rounded border border-slate-700 w-full focus:outline-none" />
+                                  <div className="flex items-center space-x-2">
+                                    <input type="text" id={`rec-${evt.id}`} placeholder="Kayıt linki (opsiyonel)..." className="bg-slate-900 text-xs text-blue-300 p-1.5 rounded border border-slate-700 w-full focus:outline-none" />
+                                    <button onClick={() => { const n = document.getElementById(`notes-${evt.id}`) as HTMLInputElement; const r = document.getElementById(`rec-${evt.id}`) as HTMLInputElement; handleMarkLessonCompleted(evt.id, n?.value, r?.value || undefined); }} className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-[11px] px-3 py-1.5 rounded-md whitespace-nowrap">✓ Yapıldı</button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {evt.teacherSummary && (
+                              <div className="mt-2 text-[11px] bg-slate-950 p-2 rounded text-emerald-300 border border-emerald-500/10">
+                                <strong>Not:</strong> {evt.teacherSummary}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* STUDENT DASHBOARD - COLORFUL, NO RECORDINGS */}
+        {currentRole === 'student' && currentStudentUser && (
+          <div className="space-y-8 animate-fadeIn">
+            <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 p-6 rounded-3xl shadow-xl border border-emerald-400/30 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+              <div className="space-y-2 relative z-10">
+                <span className="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur">Öğrenci Paneli</span>
+                <h2 className="text-2xl sm:text-3xl font-black">Hoş Geldin, {currentStudentUser.name}! 🎉</h2>
+                <p className="text-emerald-100 text-xs sm:text-sm max-w-2xl">Ödevlerin, PDF dokümanların ve sınavların seni bekliyor!</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 p-1.5 rounded-xl border border-slate-700/50 flex flex-wrap gap-1 backdrop-blur">
+              <button onClick={() => setStudentTab('dashboard')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${studentTab === 'dashboard' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>🏠 Ana Sayfa</button>
+              <button onClick={() => setStudentTab('documents')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${studentTab === 'documents' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>📚 Dokümanlar ({documents.length})</button>
+              <button onClick={() => setStudentTab('assignments')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${studentTab === 'assignments' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>📝 Ödevlerim ({assignments.filter(a => (a.studentId === currentStudentUser.id || a.studentId === 'all') && a.status === 'Bekliyor').length})</button>
+              <button onClick={() => setStudentTab('exams')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${studentTab === 'exams' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>🎯 Sınavlar ({exams.length})</button>
+              <button onClick={() => setStudentTab('calendar')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${studentTab === 'calendar' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>📅 Takvim</button>
+            </div>
+
+            {studentTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="bg-slate-950/80 p-6 rounded-2xl border border-emerald-500/30 space-y-4 backdrop-blur">
+                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <Award className="h-5 w-5 text-amber-400" />
+                    <span>📌 Son Derslerimiz & Öneriler</span>
+                  </h3>
+                  {events.filter(e => e.status.includes('Ders Yapıldı')).length === 0 ? (
+                    <p className="text-xs text-slate-500 py-6 text-center">Henüz tamamlanmış ders yok.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {events.filter(e => e.status.includes('Ders Yapıldı')).map(evt => (
+                        <div key={evt.id} className="bg-gradient-to-br from-slate-900 to-slate-800 p-4 rounded-xl border border-emerald-500/20 space-y-3">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 font-mono px-2 py-0.5 rounded border border-emerald-500/30">✓ İŞLENDİ</span>
+                            <span className="text-slate-400 font-mono">{evt.date}</span>
+                          </div>
+                          <h4 className="text-sm font-bold text-white">{evt.title}</h4>
+                          {evt.teacherSummary && (
+                            <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-xs">
+                              <span className="font-bold text-emerald-300">💡 Öneri:</span>
+                              <p className="text-slate-300 mt-1">{evt.teacherSummary}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-4 rounded-xl border border-amber-500/30 space-y-3 backdrop-blur">
+                    <h4 className="text-xs font-bold text-amber-300 uppercase flex items-center space-x-2"><Target className="h-4 w-4" /><span>Bekleyen Ödevler</span></h4>
+                    {assignments.filter(a => (a.studentId === currentStudentUser.id || a.studentId === 'all') && a.status === 'Bekliyor').length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">Bekleyen ödev yok! 🎉</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {assignments.filter(a => (a.studentId === currentStudentUser.id || a.studentId === 'all') && a.status === 'Bekliyor').map(a => (
+                          <div key={a.id} className="p-2 bg-slate-900 rounded border border-slate-700 text-xs">
+                            <p className="font-bold text-white">{a.title}</p>
+                            <p className="text-[10px] text-amber-400">Son: {a.dueDate}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 p-4 rounded-xl border border-blue-500/30 space-y-3 backdrop-blur">
+                    <h4 className="text-xs font-bold text-blue-300 uppercase flex items-center space-x-2"><BookOpen className="h-4 w-4" /><span>Son Dokümanlar</span></h4>
+                    {documents.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">Doküman yok.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {documents.slice(-3).map(doc => (
+                          <div key={doc.id} className="p-2 bg-slate-900 rounded border border-slate-700 text-xs flex items-center justify-between">
+                            <p className="font-bold text-slate-200 truncate max-w-[120px]">{doc.title}</p>
+                            <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} download={doc.type === 'pdf' ? doc.fileName || 'dokuman.pdf' : undefined} rel="noreferrer" className="text-xs text-blue-400 hover:underline">Aç ↗</a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-500/10 to-violet-500/10 p-4 rounded-xl border border-purple-500/30 space-y-3 backdrop-blur">
+                    <h4 className="text-xs font-bold text-purple-300 uppercase flex items-center space-x-2"><Calendar className="h-4 w-4" /><span>Gelecek Dersler</span></h4>
+                    {events.filter(e => e.status === 'Planlandı').length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4 text-center">Planlı ders yok.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {events.filter(e => e.status === 'Planlandı').map(e => (
+                          <div key={e.id} className="p-2 bg-slate-900 rounded border border-slate-700 text-xs">
+                            <p className="font-bold text-purple-300">{e.title}</p>
+                            <p className="text-[10px] text-slate-400">{e.date} - {e.time}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {studentTab === 'documents' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <BookOpen className="h-5 w-5 text-amber-400" />
+                  <span>📚 Ders Kitaplığı</span>
+                </h3>
+                {documents.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-8 text-center">Doküman yok.</p>
+                ) : (
+                  <div className="space-y-8">
+                    {categories.map(cat => {
+                      const catDocs = documents.filter(d => d.category === cat);
+                      if (catDocs.length === 0) return null;
+                      return (
+                        <div key={cat} className="space-y-3">
+                          <h4 className="text-xs font-bold text-amber-400 bg-slate-900 px-3 py-1 rounded-md inline-block border border-amber-500/30">📁 {cat} ({catDocs.length})</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {catDocs.map(doc => (
+                              <div key={doc.id} className="bg-gradient-to-br from-slate-900 to-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col justify-between space-y-3">
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-700">{doc.type === 'pdf' ? '📄 PDF' : doc.type === 'google-doc' ? '📝 Google Doc' : doc.type === 'video' ? '🎥 Video' : '📚 Not'}</span>
+                                  <h5 className="text-sm font-bold text-white mt-1.5">{doc.title}</h5>
+                                  {doc.fileName && <p className="text-[10px] text-amber-300">📄 {doc.fileName}</p>}
+                                  <p className="text-xs text-slate-400 bg-slate-950 p-2 rounded border border-slate-700/60 mt-2 line-clamp-3">{doc.teacherNotes}</p>
+                                </div>
+                                <a href={doc.url} target={doc.type !== 'pdf' ? '_blank' : undefined} download={doc.type === 'pdf' ? doc.fileName || 'dokuman.pdf' : undefined} rel="noreferrer" className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 text-xs px-3 py-1.5 rounded-lg font-bold inline-flex items-center space-x-1 border border-amber-500/30 self-end">
+                                  <span>{doc.type === 'pdf' ? 'İndir' : 'Aç'}</span><ExternalLink className="h-3 w-3" />
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {studentTab === 'assignments' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <ClipboardList className="h-5 w-5 text-amber-400" />
+                  <span>📝 Ödevlerim</span>
+                </h3>
+                {submittingAssignmentId && (
+                  <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-4 rounded-xl border-2 border-amber-500/40 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-xs font-bold text-amber-400">✍️ Ödev Teslim</h4>
+                      <button onClick={() => setSubmittingAssignmentId(null)} className="text-slate-400 hover:text-white text-xs bg-slate-950 px-2 py-0.5 rounded">Vazgeç</button>
+                    </div>
+                    <form onSubmit={handleStudentSubmitHomework} className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Google Doküman Linkiniz</label>
+                        <input type="text" required value={studentSubmissionUrl} onChange={(e) => setStudentSubmissionUrl(e.target.value)} placeholder="https://docs.google.com/..." className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-emerald-400 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Notunuz</label>
+                        <textarea value={studentSubmissionNotes} onChange={(e) => setStudentSubmissionNotes(e.target.value)} placeholder="Notlar..." rows={2} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-emerald-400 focus:outline-none" />
+                      </div>
+                      <button type="submit" className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-bold px-4 py-2 rounded text-xs cursor-pointer">Firebase'e Gönder</button>
+                    </form>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {assignments.filter(a => a.studentId === currentStudentUser.id || a.studentId === 'all').length === 0 ? (
+                    <p className="text-xs text-slate-500 py-6 text-center">Ödev yok.</p>
+                  ) : (
+                    assignments.filter(a => a.studentId === currentStudentUser.id || a.studentId === 'all').map(assign => (
+                      <div key={assign.id} className="p-4 bg-slate-900 rounded-xl border border-slate-700 space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className={`px-2 py-0.5 rounded font-bold ${assign.status === 'Tamamlandı' ? 'bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-400 border border-amber-500/30'}`}>{assign.status}</span>
+                          <span className="text-slate-400 font-mono">Son: {assign.dueDate}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-white">{assign.title}</h4>
+                        <p className="text-xs text-slate-400 italic bg-slate-950/50 p-2 rounded border border-slate-700">{assign.description}</p>
+                        {assign.status === 'Bekliyor' && (
+                          <div className="pt-2 text-right">
+                            <button onClick={() => { setSubmittingAssignmentId(assign.id); setStudentSubmissionUrl('https://docs.google.com/document/d/...'); }} className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-bold px-3 py-1.5 rounded text-xs cursor-pointer">✍️ Teslim Et</button>
+                          </div>
+                        )}
+                        {assign.status === 'Tamamlandı' && (
+                          <div className="pt-2 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-2 rounded text-[11px] text-emerald-400 border border-emerald-500/20">✓ Tamamlandı - {assign.submittedAt}</div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {studentTab === 'exams' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <Target className="h-5 w-5 text-blue-400" />
+                  <span>🎯 Sınav Merkezi</span>
+                </h3>
+                {exams.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-8 text-center">Aktif sınav yok.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {exams.map(ex => (
+                      <div key={ex.id} className="bg-gradient-to-br from-slate-900 to-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+                        <span className="text-[10px] bg-gradient-to-r from-blue-500/20 to-cyan-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold">{ex.category}</span>
+                        <h4 className="text-sm font-bold text-white">{ex.title}</h4>
+                        <p className="text-xs text-slate-400">{ex.description}</p>
+                        <a href={ex.examUrl} target="_blank" rel="noreferrer" className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors inline-flex items-center space-x-1">
+                          <span>Sınava Gir</span><ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             {studentTab === 'calendar' && (
-              <div className="space-y-6">
-                <div className="grid gap-4">
-                  {events
-                    .filter(e => e.studentId === 'all' || e.studentId === currentStudentUser?.id) // UPDATED: Filter for specific student
-                    .map((event) => (
-                    <div key={event.id} className="bg-slate-900/50 border border-slate-900 rounded-3xl p-6 flex items-center gap-6">
-                      <div className="w-16 h-16 bg-purple-600 rounded-2xl flex flex-col items-center justify-center text-white">
-                        <span className="text-[10px] font-black uppercase">{new Date(event.date).toLocaleDateString('tr-TR', { month: 'short' })}</span>
-                        <span className="text-xl font-black">{new Date(event.date).getDate()}</span>
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <Calendar className="h-5 w-5 text-purple-400" />
+                  <span>📅 Ders Programı</span>
+                </h3>
+                {events.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">Takvim boş.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {events.map(e => (
+                      <div key={e.id} className="p-3.5 bg-slate-900 rounded-xl border border-slate-700">
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${e.status.includes('Ders Yapıldı') ? 'bg-slate-950 text-slate-400 border border-slate-700' : 'bg-gradient-to-r from-purple-500/20 to-violet-500/20 text-purple-300 border border-purple-500/30'}`}>{e.status}</span>
+                          <span className="text-xs font-bold text-white">{e.date} - {e.time}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-200 mt-1">{e.title}</h4>
+                        <p className="text-xs text-slate-400">{e.description}</p>
                       </div>
-                      <div className="flex-1">
-                        <h4 className="text-white font-black text-lg">{event.title}</h4>
-                        <p className="text-slate-500 text-sm">{event.description}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-white font-black text-xl">{event.time}</p>
-                        <button className="text-purple-500 text-xs font-bold hover:underline">Hata Bildir</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </main>
-      </div>
-    );
-  };
+        )}
 
-  // --- MAIN RENDER ---
-  if (!userRole) return <RoleSelector />;
-
-  if (userRole === 'student') return <StudentLayout />;
-
-  return (
-    <div className="min-h-screen bg-slate-950 flex">
-      <TeacherSidebar />
-      
-      <main className="flex-1 lg:ml-72 p-4 lg:p-10">
-        <div className="max-w-6xl mx-auto">
-          {activeTab === 'dashboard' && <TeacherDashboard />}
-          {activeTab === 'students' && <TeacherStudents />}
-          {activeTab === 'docs' && <TeacherDocs />}
-          {activeTab === 'assignments' && <TeacherAssignments />}
-          {activeTab === 'calendar' && <TeacherCalendar />}
-          {activeTab === 'analytics' && (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-              <div className="p-6 bg-slate-900 rounded-full mb-6">
-                <PieChart size={64} className="text-blue-500" />
+        {/* PARENT DASHBOARD - COLORFUL WITH RECORDINGS */}
+        {currentRole === 'parent' && currentParentUser && (
+          <div className="space-y-8 animate-fadeIn">
+            <div className="bg-gradient-to-r from-rose-600 via-pink-600 to-purple-600 p-6 rounded-3xl shadow-xl border border-rose-400/30 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+              <div className="space-y-2 relative z-10">
+                <span className="bg-white/20 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur">Veli Paneli</span>
+                <h2 className="text-2xl sm:text-3xl font-black">Hoş Geldiniz, {currentParentUser.name}! ❤️</h2>
+                <p className="text-rose-100 text-xs sm:text-sm max-w-2xl">Çocuğunuzun akademik durumunu, ders kayıtlarını ve ekran kayıtlarını buradan takip edebilirsiniz.</p>
               </div>
-              <h2 className="text-2xl font-black text-white mb-2">Analiz Modülü Hazırlanıyor</h2>
-              <p className="text-slate-500 max-w-sm">Öğrenci gelişim verileri AI tarafından işleniyor. Çok yakında burada detaylı raporlar göreceksiniz.</p>
             </div>
-          )}
-        </div>
+
+            <div className="bg-slate-950/80 p-1.5 rounded-xl border border-slate-700/50 flex flex-wrap gap-1 backdrop-blur">
+              <button onClick={() => setParentTab('dashboard')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${parentTab === 'dashboard' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>🏠 Genel Bakış</button>
+              <button onClick={() => setParentTab('student-status')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${parentTab === 'student-status' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>📊 Durum</button>
+              <button onClick={() => setParentTab('recordings')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${parentTab === 'recordings' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>🎥 Ders Kayıtları</button>
+              <button onClick={() => setParentTab('calendar')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${parentTab === 'calendar' ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>📅 Takvim</button>
+            </div>
+
+            {parentTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {getLinkedStudents(currentParentUser).map(student => {
+                    const perf = getStudentPerformance(student.id);
+                    const recordings = events.filter(e => e.recordingUrl).length;
+                    return (
+                      <div key={student.id} className="bg-gradient-to-br from-slate-950 to-slate-900 p-6 rounded-2xl border border-rose-500/30 space-y-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 text-slate-950 font-bold flex items-center justify-center text-lg">
+                            {student.name.charAt(0)}
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-white">{student.name}</h3>
+                            <p className="text-xs text-slate-400">@{student.username} • {student.createdAt}</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 text-center">
+                            <p className="text-2xl font-black text-amber-400">{perf.percentage}%</p>
+                            <p className="text-[10px] text-slate-400">Başarı</p>
+                          </div>
+                          <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 text-center">
+                            <p className="text-2xl font-black text-emerald-400">{perf.done}/{perf.total}</p>
+                            <p className="text-[10px] text-slate-400">Ödev</p>
+                          </div>
+                          <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 text-center">
+                            <p className="text-2xl font-black text-blue-400">{documents.length}</p>
+                            <p className="text-[10px] text-slate-400">Doküman</p>
+                          </div>
+                          <div className="bg-slate-900 p-3 rounded-xl border border-slate-700 text-center">
+                            <p className="text-2xl font-black text-purple-400">{recordings}</p>
+                            <p className="text-[10px] text-slate-400">Kayıt</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-900 rounded-full h-4 overflow-hidden border border-slate-700">
+                          <div className="bg-gradient-to-r from-rose-500 via-pink-500 to-purple-500 h-full rounded-full transition-all" style={{ width: `${Math.max(perf.percentage, 3)}%` }}></div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-400">{perf.percentage === 100 ? '🔥 Mükemmel!' : perf.percentage > 70 ? '👍 İyi' : perf.percentage > 40 ? '📈 Gelişim' : '⚠️ Destek'}</span>
+                          <span className="text-slate-500">{recordings} kayıt</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {getLinkedStudents(currentParentUser).length === 0 && (
+                  <div className="p-12 text-center text-slate-500 bg-slate-950 rounded-xl border border-dashed border-slate-700">
+                    <Users className="h-8 w-8 text-slate-700 mx-auto" />
+                    <p className="text-sm mt-2">Henüz öğrenciyle eşleştirilmemiş.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {parentTab === 'student-status' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <BarChart3 className="h-5 w-5 text-rose-400" />
+                  <span>📊 Öğrenci Durumu</span>
+                </h3>
+                {getLinkedStudents(currentParentUser).map(student => {
+                  const perf = getStudentPerformance(student.id);
+                  const studentAssignments = assignments.filter(a => a.studentId === student.id || a.studentId === 'all');
+                  return (
+                    <div key={student.id} className="space-y-4">
+                      <div className="flex items-center space-x-3 bg-slate-900 p-4 rounded-xl border border-slate-700">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-400 text-slate-950 font-bold flex items-center justify-center">{student.name.charAt(0)}</div>
+                        <div>
+                          <h4 className="text-base font-bold text-white">{student.name}</h4>
+                          <p className="text-xs text-slate-400">@{student.username}</p>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300 font-bold">Başarı</span>
+                          <span className="text-amber-400 font-bold">%{perf.percentage}</span>
+                        </div>
+                        <div className="w-full bg-slate-950 rounded-full h-5 overflow-hidden border border-slate-700">
+                          <div className="bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-400 h-full rounded-full transition-all" style={{ width: `${Math.max(perf.percentage, 3)}%` }}></div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                          <div className="bg-slate-950 p-2 rounded border border-slate-700">
+                            <p className="text-emerald-400 font-bold">{studentAssignments.filter(a => a.status === 'Tamamlandı').length}</p>
+                            <p className="text-slate-400">Tamamlandı</p>
+                          </div>
+                          <div className="bg-slate-950 p-2 rounded border border-slate-700">
+                            <p className="text-amber-400 font-bold">{studentAssignments.filter(a => a.status === 'Bekliyor').length}</p>
+                            <p className="text-slate-400">Bekliyor</p>
+                          </div>
+                          <div className="bg-slate-950 p-2 rounded border border-slate-700">
+                            <p className="text-blue-400 font-bold">{documents.length}</p>
+                            <p className="text-slate-400">Doküman</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3">
+                        <h5 className="text-xs font-bold text-slate-300 uppercase">Ödevler</h5>
+                        {studentAssignments.length === 0 ? (
+                          <p className="text-xs text-slate-500">Ödev yok.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {studentAssignments.map(a => (
+                              <div key={a.id} className="p-3 bg-slate-950 rounded-lg border border-slate-700 flex items-center justify-between">
+                                <div>
+                                  <p className="text-xs font-bold text-white">{a.title}</p>
+                                  <p className="text-[10px] text-slate-400">Son: {a.dueDate}</p>
+                                  {a.submittedAt && <p className="text-[10px] text-emerald-400">Teslim: {a.submittedAt}</p>}
+                                </div>
+                                <span className={`px-2 py-1 rounded text-[10px] font-bold ${a.status === 'Tamamlandı' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>{a.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {parentTab === 'recordings' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                    <MonitorPlay className="h-5 w-5 text-blue-400" />
+                    <span>🎥 Ders Ekran Kayıtları</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">Öğretmen tarafından eklenen ders kayıtlarını buradan izleyebilirsiniz.</p>
+                </div>
+                {events.filter(e => e.recordingUrl).length === 0 ? (
+                  <div className="p-12 text-center text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-700">
+                    <Video className="h-8 w-8 text-slate-700 mx-auto" />
+                    <p className="text-sm mt-2">Henüz ders kaydı yok.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {events.filter(e => e.recordingUrl).map(evt => (
+                      <div key={evt.id} className="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
+                        <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-950/50 transition-colors" onClick={() => setExpandedRecordingId(expandedRecordingId === evt.id ? null : evt.id)}>
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30 flex items-center justify-center">
+                              <MonitorPlay className="h-5 w-5 text-blue-400" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-bold text-white">{evt.title}</h4>
+                              <p className="text-[10px] text-slate-400">{evt.date} • {evt.time}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3">
+                            <span className="text-[10px] bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/30">KAYIT</span>
+                            {expandedRecordingId === evt.id ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                          </div>
+                        </div>
+                        {expandedRecordingId === evt.id && (
+                          <div className="px-4 pb-4 space-y-3 border-t border-slate-700 pt-3">
+                            <p className="text-xs text-slate-300">{evt.description}</p>
+                            {evt.teacherSummary && (
+                              <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20 text-xs">
+                                <span className="font-bold text-emerald-300">💡 Not:</span>
+                                <p className="text-slate-300 mt-1">{evt.teacherSummary}</p>
+                              </div>
+                            )}
+                            <div className="flex items-center space-x-3">
+                              <a href={evt.recordingUrl} target="_blank" rel="noreferrer" className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors inline-flex items-center space-x-2">
+                                <MonitorPlay className="h-4 w-4" />
+                                <span>Kaydı İzle</span>
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </a>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {parentTab === 'calendar' && (
+              <div className="space-y-6 bg-slate-950/80 p-6 rounded-2xl border border-slate-700/50 backdrop-blur">
+                <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <Calendar className="h-5 w-5 text-purple-400" />
+                  <span>📅 Takvim</span>
+                </h3>
+                {events.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">Takvim boş.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {events.map(e => (
+                      <div key={e.id} className="p-3.5 bg-slate-900 rounded-xl border border-slate-700">
+                        <div className="flex items-center space-x-2">
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${e.status.includes('Ders Yapıldı') ? 'bg-slate-950 text-slate-400 border border-slate-700' : 'bg-gradient-to-r from-purple-500/20 to-violet-500/20 text-purple-300 border border-purple-500/30'}`}>{e.status}</span>
+                          <span className="text-xs font-bold text-white">{e.date} - {e.time}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-200 mt-1">{e.title}</h4>
+                        <p className="text-xs text-slate-400">{e.description}</p>
+                        {e.recordingUrl && (
+                          <a href={e.recordingUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline mt-2 inline-flex items-center space-x-1">
+                            <MonitorPlay className="h-3 w-3" /><span>Kaydı İzle</span>
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+        )}
+
       </main>
 
-      {/* Mobile Menu Toggle */}
-      <button 
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="fixed bottom-6 right-6 z-[60] lg:hidden p-4 bg-blue-600 text-white rounded-full shadow-2xl shadow-blue-900/40"
-      >
-        {isMobileMenuOpen ? <X /> : <Menu />}
-      </button>
+      {/* FOOTER */}
+      <footer className="mt-16 border-t border-slate-700/50 bg-slate-950/80 py-8 text-xs text-slate-500 text-center backdrop-blur">
+        <div className="max-w-7xl mx-auto px-4 space-y-2">
+          <p className="font-bold text-slate-400">DersLink — Öğretmen, Öğrenci & Veli Platformu (Firebase Firestore Bağlantılı)</p>
+          <p>Öğrenci için pratik, öğretmen için profesyonel. Eğitimde dijitalleşmenin en kısa yoluyla tanışın! <code className="text-amber-400">BAŞARILAR</code> • PDF & Ekran Kaydı • Çift Yönlü Cloud & Yerel Senkronizasyon © 2026</p>
+          <div className="pt-2 flex justify-center space-x-4">
+            <button onClick={() => setCurrentRole('guest')} className="text-amber-400 hover:underline font-bold">Giriş Ekranına Dön</button>
+          </div>
+        </div>
+      </footer>
+
     </div>
   );
-};
-
-export default App;
+}
