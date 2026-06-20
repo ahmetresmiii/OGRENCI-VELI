@@ -7,11 +7,11 @@ Bu proje, ortaokul düzeyindeki eğitim süreçlerini dijitalleştirmek, ödev t
 
 Proje, güncel web geliştirme standartlarına uygun olarak aşağıdaki teknolojilerle inşa edilmiştir:
 
-    Frontend: [Teknolojileri buraya ekle, örn: React, Next.js]
+    Frontend: [React, Next.js]
 
-    Styling: [CSS Framework, örn: Tailwind CSS]
+    Styling: [ Tailwind CSS]
 
-    Backend/Veri Yönetimi: [Kullanılan araç, örn: Firebase]
+    Backend/Veri Yönetimi: [ Firebase]
 
     Deployment: Vercel
 
