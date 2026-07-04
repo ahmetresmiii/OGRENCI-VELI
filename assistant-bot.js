@@ -15,12 +15,15 @@ const firebaseConfig = {
 
 // Bot ve AI Kimlik Bilgileri
 const TELEGRAM_BOT_TOKEN = '8903876036:AAEDESUha3MUDfkJKUSJQ5OQDqlNqREn39s';
-const GEMINI_API_KEY = 'AQ.Ab8RN6KWrexCBRxT8niYrY759I0gQOZkw2AaDFG6ffD5GTyIaw';
+// Gemini API anahtarının temiz formatta algılanması için string olarak doğrudan tanımlıyoruz
+const GEMINI_API_KEY = 'AQ.Ab8RN6KWrexCBRxT8niYrY759I0gQOZkw2AaDFG6ffD5GTyIaw'.trim();
 
 // Başlatmalar
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
+
+// API anahtarını güvenli bir şekilde entegre ediyoruz
 const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // --- CANLI VERİ BAĞLAMI OLUŞTURUCU ---
@@ -54,7 +57,7 @@ async function getSystemContext() {
     } else {
       recentAssignments.forEach(a => {
         const studentName = students.find(s => s.id === a.studentId)?.name || "Bilinmeyen Öğrenci";
-        context += `- Öğrenci: ${studentName}, Ödev Başlığı: ${a.title}, Teslim Tarihi: ${a.submittedAt || 'Belirtilmemiş'}\n`;
+        context += `- Öğrenci: ${studentName}, Ödev Başlüğü: ${a.title}, Teslim Tarihi: ${a.submittedAt || 'Belirtilmemiş'}\n`;
       });
     }
 
@@ -73,6 +76,7 @@ bot.on('text', async (ctx) => {
   const liveSystemData = await getSystemContext();
 
   try {
+    // En kararlı çalışan modeli çağırıyoruz
     const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const systemPrompt = `
@@ -89,7 +93,7 @@ bot.on('text', async (ctx) => {
 
     await ctx.reply(responseText);
   } catch (error) {
-    console.error("Gemini AI Hatası:", error);
+    console.error("Gemini AI Hatası ayrıntısı:", error);
     await ctx.reply("🤖 Üzgünüm hocam, yapay zeka motoruyla konuşurken küçük bir teknik aksaklık yaşandı.");
   }
 });
