@@ -69,7 +69,6 @@ async function getSystemContext() {
 
 // --- GOOGLE STANDARTLARINDA DOĞRUDAN FETCH İSTEĞİ ---
 async function askGeminiDirect(systemPrompt, userMessage) {
-  // Anahtarı hem URL parametresi olarak ekliyoruz hem de en kararlı endpoint'i kullanıyoruz
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
   const response = await fetch(url, {
@@ -90,7 +89,7 @@ async function askGeminiDirect(systemPrompt, userMessage) {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Gemini HTTP Hatası: ${response.status} - ${errText}`);
+    throw new Error(`HTTP ${response.status}: ${errText}`);
   }
 
   const data = await response.json();
@@ -98,20 +97,19 @@ async function askGeminiDirect(systemPrompt, userMessage) {
   if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
     return data.candidates[0].content.parts[0].text;
   } else {
-    throw new Error("Gemini beklendiği gibi bir yanıt döndürmedi.");
+    throw new Error("Gemini geçerli bir yanıt döndürmedi.");
   }
 }
 
 // --- BOT MESAJ İŞLEME MANTIĞI ---
 bot.on('text', async (ctx) => {
   const userMessage = ctx.message.text;
-  const liveSystemData = await getSystemContext();
-
+  
   try {
+    const liveSystemData = await getSystemContext();
     const systemPrompt = `
       Sen Sınıfım360 platformunun akıllı eğitim asistanısın. Kullanıcı (Öğretmen) sana sorular soracak.
       Aşağıda platformdan gelen anlık, canlı veriler yer almaktadır. Bu verilere göre sorulan sorulara net, samimi, öz ve doğru cevaplar vermelisin.
-      Eğer veride aranan bilgi yoksa veya genel bir şey soruluyorsa kibar bir şekilde asistan gibi sohbet et.
 
       Canlı Sistem Verileri:
       ${liveSystemData}
@@ -120,12 +118,13 @@ bot.on('text', async (ctx) => {
     const responseText = await askGeminiDirect(systemPrompt, userMessage);
     await ctx.reply(responseText);
   } catch (error) {
+    // Hatayı gizlemek yerine direkt Telegram chatine yazdırıyoruz!
     console.error("Detaylı Hata Çıktısı:", error);
-    await ctx.reply("🤖 Üzgünüm hocam, yapay zeka motoruyla konuşurken küçük bir teknik aksaklık yaşandı.");
+    await ctx.reply(`🤖 Teknik Hata Detayı:\n${error.message}`);
   }
 });
 
 // Botu Başlat
 bot.launch().then(() => {
-  console.log("🚀 Sınıfım360 Akıllı AI Asistan Botu başarıyla başlatıldı ve dinliyor...");
+  console.log("🚀 Sınıfım360 Akıllı AI Asistan Botu başarıyla başlatıldı.");
 });
