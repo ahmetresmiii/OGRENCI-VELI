@@ -1,10 +1,6 @@
-// src/telegram.ts
-
-export const sendTelegramNotification = async (ogrenciAdi: string, odevBasligi: string) => {
-  const botToken = "8820072053:AAGPpog5NkKyygti1OYlA1pj3dfdLdUiPBA";
-  const chatId = "SENIN_CHAT_ID_BURAYA"; // Kendi Telegram Chat ID'ni yaz
-  
-  const mesaj = `🔔 *Ödev Tamamlandı!*\n\n👤 *Öğrenci:* ${ogrenciAdi}\n📚 *Ödev:* ${odevBasligi}`;
+export const sendTelegramNotification = async (message: string) => {
+  const botToken = "8903876036:AAEDESUha3MUDfkJKUSJQ5OQDqlNqREn39s";
+  const chatId = "8963692756"; 
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -14,7 +10,7 @@ export const sendTelegramNotification = async (ogrenciAdi: string, odevBasligi: 
       },
       body: JSON.stringify({
         chat_id: chatId,
-        text: mesaj,
+        text: message,
         parse_mode: "Markdown",
       }),
     });
