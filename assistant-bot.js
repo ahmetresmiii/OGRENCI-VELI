@@ -1,5 +1,5 @@
 import { Telegraf } from 'telegraf';
-import { GoogleGenAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 
@@ -21,7 +21,7 @@ const GEMINI_API_KEY = 'AQ.Ab8RN6KWrexCBRxT8niYrY759I0gQOZkw2AaDFG6ffD5GTyIaw';
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // --- CANLI VERİ BAĞLAMI OLUŞTURUCU ---
 async function getSystemContext() {
