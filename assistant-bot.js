@@ -67,22 +67,21 @@ async function getSystemContext() {
   }
 }
 
-// --- DIRECT FETCH ILE GEMINI API CAGGIRISI ---
+// --- GOOGLE STANDARTLARINDA DOĞRUDAN FETCH İSTEĞİ ---
 async function askGeminiDirect(systemPrompt, userMessage) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+  // Anahtarı hem URL parametresi olarak ekliyoruz hem de en kararlı endpoint'i kullanıyoruz
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'X-goog-api-key': GEMINI_API_KEY
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       contents: [
         {
-          role: 'user',
           parts: [
-            { text: `${systemPrompt}\n\nKullanıcı Mesajı: ${userMessage}` }
+            { text: `${systemPrompt}\n\nKullanıcıdan Gelen Soru: ${userMessage}` }
           ]
         }
       ]
@@ -91,11 +90,16 @@ async function askGeminiDirect(systemPrompt, userMessage) {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Gemini API Hatası: ${response.status} - ${errText}`);
+    throw new Error(`Gemini HTTP Hatası: ${response.status} - ${errText}`);
   }
 
   const data = await response.json();
-  return data.candidates[0].content.parts[0].text;
+  
+  if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
+    return data.candidates[0].content.parts[0].text;
+  } else {
+    throw new Error("Gemini beklendiği gibi bir yanıt döndürmedi.");
+  }
 }
 
 // --- BOT MESAJ İŞLEME MANTIĞI ---
@@ -107,17 +111,16 @@ bot.on('text', async (ctx) => {
     const systemPrompt = `
       Sen Sınıfım360 platformunun akıllı eğitim asistanısın. Kullanıcı (Öğretmen) sana sorular soracak.
       Aşağıda platformdan gelen anlık, canlı veriler yer almaktadır. Bu verilere göre sorulan sorulara net, samimi, öz ve doğru cevaplar vermelisin.
-      Eğer veride aranan bilgi yoksa veya genel bir şey soruluyorsa (örneğin merhaba deniyorsa) kibar bir şekilde asistan gibi sohbet et.
+      Eğer veride aranan bilgi yoksa veya genel bir şey soruluyorsa kibar bir şekilde asistan gibi sohbet et.
 
       Canlı Sistem Verileri:
       ${liveSystemData}
     `;
 
-    // Doğrudan fetch fonksiyonumuzu çağırıyoruz
     const responseText = await askGeminiDirect(systemPrompt, userMessage);
     await ctx.reply(responseText);
   } catch (error) {
-    console.error("Detaylı Hata Logu:", error);
+    console.error("Detaylı Hata Çıktısı:", error);
     await ctx.reply("🤖 Üzgünüm hocam, yapay zeka motoruyla konuşurken küçük bir teknik aksaklık yaşandı.");
   }
 });
