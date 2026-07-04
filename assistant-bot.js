@@ -1,7 +1,13 @@
 import { Telegraf } from 'telegraf';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import express from 'express';
+
+// --- RENDER PORT BAĞLAMA (SAHTE WEB SUNUCU) ---
+const expressApp = express();
+const PORT = process.env.PORT || 10000;
+expressApp.get('/', (req, res) => res.send('Bot aktif ve çalışıyor!'));
+expressApp.listen(PORT, () => console.log(`🌍 Render için port dinleniyor: ${PORT}`));
 
 // --- VERİTABANI YAPILANDIRMASI ---
 const firebaseConfig = {
@@ -15,26 +21,20 @@ const firebaseConfig = {
 
 // Bot ve AI Kimlik Bilgileri
 const TELEGRAM_BOT_TOKEN = '8903876036:AAEDESUha3MUDfkJKUSJQ5OQDqlNqREn39s';
-// Gemini API anahtarının temiz formatta algılanması için string olarak doğrudan tanımlıyoruz
-const GEMINI_API_KEY = 'AQ.Ab8RN6KWrexCBRxT8niYrY759I0gQOZkw2AaDFG6ffD5GTyIaw'.trim();
+const GEMINI_API_KEY = 'AQ.Ab8RN6LNIct3oaWXcTka0EaICXf7aOUFTODc6XBXycKDEI8HdA'.trim();
 
 // Başlatmalar
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
 
-// API anahtarını güvenli bir şekilde entegre ediyoruz
-const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
-
 // --- CANLI VERİ BAĞLAMI OLUŞTURUCU ---
 async function getSystemContext() {
   try {
-    // 1. Öğrencileri Al
     const studentSnap = await getDocs(collection(db, "students"));
     const students = [];
     studentSnap.forEach(doc => students.push(doc.data()));
 
-    // 2. Son Tamamlanan Ödevleri Al
     const assignQuery = query(collection(db, "assignments"), orderBy("submittedAt", "desc"), limit(5));
     const assignSnap = await getDocs(assignQuery);
     const recentAssignments = [];
@@ -45,7 +45,6 @@ async function getSystemContext() {
       }
     });
 
-    // Verileri yapay zekanın anlayacağı metin formatına getiriyoruz
     let context = "Sistemdeki Güncel Öğrenci Durumları:\n";
     students.forEach(s => {
       context += `- Öğrenci Adı: ${s.name}, Kullanıcı Adı: ${s.username}, Son Giriş Tarihi: ${s.lastLogin || 'Henüz giriş yapmadı'}, Öğretmen Notu: ${s.teacherNotes || 'Not yok'}\n`;
@@ -57,7 +56,7 @@ async function getSystemContext() {
     } else {
       recentAssignments.forEach(a => {
         const studentName = students.find(s => s.id === a.studentId)?.name || "Bilinmeyen Öğrenci";
-        context += `- Öğrenci: ${studentName}, Ödev Başlüğü: ${a.title}, Teslim Tarihi: ${a.submittedAt || 'Belirtilmemiş'}\n`;
+        context += `- Öğrenci: ${studentName}, Ödev Başlığı: ${a.title}, Teslim Tarihi: ${a.submittedAt || 'Belirtilmemiş'}\n`;
       });
     }
 
@@ -68,17 +67,43 @@ async function getSystemContext() {
   }
 }
 
+// --- DIRECT FETCH ILE GEMINI API CAGGIRISI ---
+async function askGeminiDirect(systemPrompt, userMessage) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-goog-api-key': GEMINI_API_KEY
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: `${systemPrompt}\n\nKullanıcı Mesajı: ${userMessage}` }
+          ]
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API Hatası: ${response.status} - ${errText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates[0].content.parts[0].text;
+}
+
 // --- BOT MESAJ İŞLEME MANTIĞI ---
 bot.on('text', async (ctx) => {
   const userMessage = ctx.message.text;
-  
-  // Anlık olarak Firebase'den canlı verileri çekiyoruz
   const liveSystemData = await getSystemContext();
 
   try {
-    // En kararlı çalışan modeli çağırıyoruz
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
     const systemPrompt = `
       Sen Sınıfım360 platformunun akıllı eğitim asistanısın. Kullanıcı (Öğretmen) sana sorular soracak.
       Aşağıda platformdan gelen anlık, canlı veriler yer almaktadır. Bu verilere göre sorulan sorulara net, samimi, öz ve doğru cevaplar vermelisin.
@@ -88,12 +113,11 @@ bot.on('text', async (ctx) => {
       ${liveSystemData}
     `;
 
-    const result = await model.generateContent([systemPrompt, userMessage]);
-    const responseText = result.response.text();
-
+    // Doğrudan fetch fonksiyonumuzu çağırıyoruz
+    const responseText = await askGeminiDirect(systemPrompt, userMessage);
     await ctx.reply(responseText);
   } catch (error) {
-    console.error("Gemini AI Hatası ayrıntısı:", error);
+    console.error("Detaylı Hata Logu:", error);
     await ctx.reply("🤖 Üzgünüm hocam, yapay zeka motoruyla konuşurken küçük bir teknik aksaklık yaşandı.");
   }
 });
