@@ -19,9 +19,9 @@ const firebaseConfig = {
   appId: "1:1092640766125:web:c3b7c7dc99606515946e24"
 };
 
-// Bot ve AI Kimlik Bilgileri
+// Bot ve OpenRouter Kimlik Bilgileri
 const TELEGRAM_BOT_TOKEN = '8903876036:AAEDESUha3MUDfkJKUSJQ5OQDqlNqREn39s';
-const GEMINI_API_KEY = 'AQ.Ab8RN6LNIct3oaWXcTka0EaICXf7aOUFTODc6XBXycKDEI8HdA'.trim();
+const OPENROUTER_API_KEY = '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'.trim();
 
 // Başlatmalar
 const app = initializeApp(firebaseConfig);
@@ -67,40 +67,38 @@ async function getSystemContext() {
   }
 }
 
-// --- BEARER TOKEN DESTEKLİ FETCH İSTEĞİ ---
-async function askGeminiDirect(systemPrompt, userMessage) {
-  // URL parametresinden key'i kaldırıp saf endpoint'e istek atıyoruz
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+// --- OPENROUTER API FETCH İSTEĞİ ---
+async function askOpenRouter(systemPrompt, userMessage) {
+  const url = 'https://openrouter.ai/api/v1/chat/completions';
   
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      // Anahtarı OAuth/Bearer standartlarına uygun olarak başlığa yerleştiriyoruz
-      'Authorization': `Bearer ${GEMINI_API_KEY}`
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'HTTP-Referer': 'https://ogrenci-veli.onrender.com',
+      'X-Title': 'Sınıfım360 Bot'
     },
     body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: `${systemPrompt}\n\nKullanıcıdan Gelen Soru: ${userMessage}` }
-          ]
-        }
+      model: 'openrouter/auto', // İstediğin otomatik model seçimi aktif edildi
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
       ]
     })
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`HTTP ${response.status}: ${errText}`);
+    throw new Error(`OpenRouter HTTP ${response.status}: ${errText}`);
   }
 
   const data = await response.json();
   
-  if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
-    return data.candidates[0].content.parts[0].text;
+  if (data.choices && data.choices[0] && data.choices[0].message) {
+    return data.choices[0].message.content;
   } else {
-    throw new Error("Gemini geçerli bir yanıt döndürmedi.");
+    throw new Error("OpenRouter geçerli bir yanıt döndürmedi.");
   }
 }
 
@@ -118,7 +116,7 @@ bot.on('text', async (ctx) => {
       ${liveSystemData}
     `;
 
-    const responseText = await askGeminiDirect(systemPrompt, userMessage);
+    const responseText = await askOpenRouter(systemPrompt, userMessage);
     await ctx.reply(responseText);
   } catch (error) {
     console.error("Detaylı Hata Çıktısı:", error);
