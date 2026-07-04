@@ -67,14 +67,17 @@ async function getSystemContext() {
   }
 }
 
-// --- GOOGLE STANDARTLARINDA DOĞRUDAN FETCH İSTEĞİ ---
+// --- BEARER TOKEN DESTEKLİ FETCH İSTEĞİ ---
 async function askGeminiDirect(systemPrompt, userMessage) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  // URL parametresinden key'i kaldırıp saf endpoint'e istek atıyoruz
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
   
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      // Anahtarı OAuth/Bearer standartlarına uygun olarak başlığa yerleştiriyoruz
+      'Authorization': `Bearer ${GEMINI_API_KEY}`
     },
     body: JSON.stringify({
       contents: [
@@ -118,7 +121,6 @@ bot.on('text', async (ctx) => {
     const responseText = await askGeminiDirect(systemPrompt, userMessage);
     await ctx.reply(responseText);
   } catch (error) {
-    // Hatayı gizlemek yerine direkt Telegram chatine yazdırıyoruz!
     console.error("Detaylı Hata Çıktısı:", error);
     await ctx.reply(`🤖 Teknik Hata Detayı:\n${error.message}`);
   }
