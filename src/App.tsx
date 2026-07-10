@@ -40,17 +40,6 @@ import {
   Wifi
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
-const firebaseConfig = {
-  apiKey: "AIzaSyBqxSvtSrKLjb-0Yq91abjXhqPy8JIbSJs",
-  authDomain: "veliogrenci-cce71.firebaseapp.com",
-  projectId: "veliogrenci-cce71",
-  storageBucket: "veliogrenci-cce71.firebasestorage.app",
-  messagingSenderId: "1092640766125",
-  appId: "1:1092640766125:web:c3b7c7dc99606515946e24",
-  measurementId: "G-JQ5PGHB7K9"
-};
-
 // Initialize Firebase App & Firestore Database
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
