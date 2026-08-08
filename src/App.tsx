@@ -788,10 +788,7 @@ export default function App() {
   const handleStudentSubmitHomework = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submittingAssignmentId) return;
-    if (!studentSubmissionUrl) {
-      alert('Google Doküman linkinizi girin.');
-      return;
-    }
+
     const updated = assignments.map(assign => {
       if (assign.id === submittingAssignmentId) {
         return {
