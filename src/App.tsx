@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
@@ -795,6 +796,7 @@ export default function App() {
           ...assign,
           status: 'Tamamlandı' as const,
           submissionUrl: studentSubmissionUrl,
+          submissionFiles: studentSubmissionFiles,
           studentNotes: studentSubmissionNotes || 'Ödev tamamlandı.',
           submittedAt: new Date().toLocaleString('tr-TR')
         };
