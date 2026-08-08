@@ -84,6 +84,7 @@ interface DocumentItem {
   teacherNotes: string;
   createdAt: string;
   fileName?: string;
+  targetStudentIds?: string[];
 }
 
 interface Assignment {
