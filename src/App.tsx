@@ -1903,7 +1903,11 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
                   <p className="text-xs text-slate-500 py-6 text-center">Takvim boş.</p>
                 ) : (
                   <div className="space-y-3">
-                    {events.map(e => (
+                    {events.filter(e =>
+  e.studentId === currentStudentUser.id ||
+  e.studentId === 'all' ||
+  !e.studentId
+).map(e => (
                       <div key={e.id} className="p-3.5 bg-slate-900 rounded-xl border border-slate-700">
                         <div className="flex items-center space-x-2">
                           <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${e.status.includes('Ders Yapıldı') ? 'bg-slate-950 text-slate-400 border border-slate-700' : 'bg-gradient-to-r from-purple-500/20 to-violet-500/20 text-purple-300 border border-purple-500/30'}`}>{e.status}</span>
