@@ -198,7 +198,7 @@ export default function App() {
   const [submittingAssignmentId, setSubmittingAssignmentId] = useState<string | null>(null);
   const [studentSubmissionUrl, setStudentSubmissionUrl] = useState('');
   const [studentSubmissionNotes, setStudentSubmissionNotes] = useState('');
-
+  const [studentSubmissionFiles, setStudentSubmissionFiles] = useState<File[]>([]);
   const [expandedRecordingId, setExpandedRecordingId] = useState<string | null>(null);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [editNotesValue, setEditNotesValue] = useState('');
