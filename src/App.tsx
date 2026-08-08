@@ -698,6 +698,7 @@ export default function App() {
       title: calTitle,
       date: calDate,
       time: calTime,
+      studentId: calStudentId,
       description: calDesc || 'Planlı Canlı Ders.',
       status: 'Planlandı'
     };
