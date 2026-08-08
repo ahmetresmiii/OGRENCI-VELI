@@ -1845,6 +1845,7 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
     accept="image/*"
     multiple
     capture="environment"
+    onChange={(e) => setStudentSubmissionFiles(Array.from(e.target.files || []))}
     className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700"
   />
 
