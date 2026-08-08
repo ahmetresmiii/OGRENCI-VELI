@@ -810,9 +810,6 @@ export default function App() {
 const submittedObj = updated.find(a => a.id === submittingAssignmentId);
     if (submittedObj) {
       await saveDocToFirebase("assignments", submittedObj.id, submittedObj);
-      
-      
-      );
     } 
 
     setSubmittingAssignmentId(null);
