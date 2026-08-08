@@ -1820,9 +1820,22 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
                     </div>
                     <form onSubmit={handleStudentSubmitHomework} className="space-y-3">
                       <div>
-                        <label className="block text-[11px] text-slate-400 mb-1">Google Doküman Linkiniz</label>
-                        <input type="text" required value={studentSubmissionUrl} onChange={(e) => setStudentSubmissionUrl(e.target.value)} placeholder="https://docs.google.com/..." className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-emerald-400 focus:outline-none" />
-                      </div>
+  <label className="block text-[11px] text-slate-400 mb-1">
+    Ödev Fotoğrafları
+  </label>
+
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    capture="environment"
+    className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700"
+  />
+
+  <p className="text-[10px] text-slate-500 mt-1">
+    İstediğin kadar fotoğraf seçebilirsin. 📸
+  </p>
+</div>
                       <div>
                         <label className="block text-[11px] text-slate-400 mb-1">Notunuz</label>
                         <textarea value={studentSubmissionNotes} onChange={(e) => setStudentSubmissionNotes(e.target.value)} placeholder="Notlar..." rows={2} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-emerald-400 focus:outline-none" />
