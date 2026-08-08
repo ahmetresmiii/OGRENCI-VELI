@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
-import { sendTelegramNotification } from './telegram';
 import { 
   UserPlus, 
   FileText, 
@@ -808,12 +807,7 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
     if (submittedObj) {
       await saveDocToFirebase("assignments", submittedObj.id, submittedObj);
       
-      // 🔔 TELEGRAM BİLDİRİMİ
-      await sendTelegramNotification(
-        `🔥 *Ödev Teslim Edildi!*\n\n` +
-        `👤 *Öğrenci:* ${currentStudentUser?.name || 'Bilinmeyen Öğrenci'}\n` +
-        `📝 *Ödev:* ${submittedObj.title}\n` +
-        `🔗 *Doküman Linki:* ${studentSubmissionUrl}`
+      
       );
     } 
 
