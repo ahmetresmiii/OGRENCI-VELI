@@ -113,6 +113,7 @@ interface CalendarEvent {
   title: string;
   date: string;
   time: string;
+  studentId?: string;
   description: string;
   status: 'Planlandı' | 'Ders Yapıldı (Öğrenciden Düşüldü)';
   teacherSummary?: string;
