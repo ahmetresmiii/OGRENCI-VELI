@@ -1604,6 +1604,25 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
                         </div>
                       </div>
                       <div>
+                        <div>
+  <label className="block text-[11px] text-slate-400 mb-1">
+    Öğrenci
+  </label>
+
+  <select
+    value={calStudentId}
+    onChange={(e) => setCalStudentId(e.target.value)}
+    className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none"
+  >
+    <option value="all">Tüm Öğrenciler</option>
+
+    {students.map((student) => (
+      <option key={student.id} value={student.id}>
+        {student.name}
+      </option>
+    ))}
+  </select>
+</div>
                         <label className="block text-[11px] text-slate-400 mb-1">Detay</label>
                         <textarea value={calDesc} onChange={(e) => setCalDesc(e.target.value)} placeholder="Detaylar..." rows={2} className="w-full bg-slate-950 text-xs text-white p-2 rounded border border-slate-700 focus:border-purple-500 focus:outline-none" />
                       </div>
