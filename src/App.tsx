@@ -811,8 +811,12 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
     e.preventDefault();
     if (!submittingAssignmentId) return;
     try {
+const files = Array.isArray(studentSubmissionFiles)
+  ? studentSubmissionFiles
+  : [];
+
 const uploadedPhotoUrls = await Promise.all(
-  (file => uploadToCloudinary(file))
+  files.map(file => uploadToCloudinary(file))
 );
     const updated = assignments.map(assign => {
       if (assign.id === submittingAssignmentId) {
