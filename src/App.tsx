@@ -786,7 +786,27 @@ export default function App() {
       setParentLoginError('Hatalı kullanıcı adı veya şifre!');
     }
   };
+const uploadToCloudinary = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'derslik');
 
+  const response = await fetch(
+    'https://api.cloudinary.com/v1_1/vnpkeqxg/image/upload',
+    {
+      method: 'POST',
+      body: formData
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Fotoğraf yüklenemedi.');
+  }
+
+  const data = await response.json();
+  return data.secure_url;
+};
+  
   const handleStudentSubmitHomework = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submittingAssignmentId) return;
