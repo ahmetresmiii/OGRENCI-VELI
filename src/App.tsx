@@ -1384,6 +1384,38 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
 
                 <form onSubmit={handleAddDocument} className="bg-slate-900 p-5 rounded-xl border border-slate-700 space-y-4">
                   <h4 className="text-sm font-bold text-amber-400">Doküman Detay Formu</h4>
+                  <div>
+  <label className="block text-xs font-bold text-slate-300 mb-2">
+    Öğrenciye Özel
+  </label>
+
+  <div className="grid grid-cols-2 gap-2 bg-slate-950 p-3 rounded-lg border border-slate-700">
+    {students.map(student => (
+      <label
+        key={student.id}
+        className="flex items-center space-x-2 text-xs text-slate-300"
+      >
+        <input
+          type="checkbox"
+          checked={docTargetStudentIds.includes(student.id)}
+          onChange={() => {
+            setDocTargetStudentIds(prev =>
+              prev.includes(student.id)
+                ? prev.filter(id => id !== student.id)
+                : [...prev, student.id]
+            );
+          }}
+          className="accent-amber-500"
+        />
+        <span>{student.name}</span>
+      </label>
+    ))}
+  </div>
+
+  <p className="text-[10px] text-slate-500 mt-1">
+    Hiçbir öğrenci seçilmezse doküman herkese görünür.
+  </p>
+</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1">Başlık</label>
