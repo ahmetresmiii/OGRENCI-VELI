@@ -597,6 +597,7 @@ export default function App() {
       id: 'doc_' + Date.now(),
       title: docTitle,
       category: activeCategory,
+      targetStudentIds: docTargetStudentIds,
       type: docType,
       url: docUrl,
       teacherNotes: docNotes || 'Öğretmen not bırakmadı.',
