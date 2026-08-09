@@ -1877,7 +1877,12 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
                 ) : (
                   <div className="space-y-8">
                     {categories.map(cat => {
-                      const catDocs = documents.filter(d => d.category === cat);
+                      const catDocs = documents.filter(
+  d =>
+    d.category === cat &&
+    (!d.targetStudentIds?.length ||
+      d.targetStudentIds.includes(currentStudentUser.id))
+);
                       if (catDocs.length === 0) return null;
                       return (
                         <div key={cat} className="space-y-3">
