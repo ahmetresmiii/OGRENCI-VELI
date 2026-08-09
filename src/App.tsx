@@ -568,6 +568,7 @@ export default function App() {
           title: docTitle,
           category: activeCategory,
           type: 'pdf',
+          targetStudentIds: docTargetStudentIds,
           url: base64Url,
           teacherNotes: docNotes || 'PDF dokümanı',
           createdAt: new Date().toLocaleDateString('tr-TR'),
@@ -581,6 +582,7 @@ export default function App() {
         setDocTitle('');
         setDocUrl('');
         setDocNotes('');
+        setDocTargetStudentIds([]);
         setSelectedPdfFile(null);
         alert('PDF dosyası başarıyla Firebase veritabanına yüklendi!');
       };
@@ -611,6 +613,7 @@ export default function App() {
     setDocTitle('');
     setDocUrl('');
     setDocNotes('');
+    setDocTargetStudentIds([]);
     setSelectedPdfFile(null);
     alert('Doküman başarıyla Firebase veritabanına eklendi!');
   };
