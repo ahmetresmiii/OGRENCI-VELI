@@ -169,6 +169,7 @@ export default function App() {
   const [docType, setDocType] = useState<'google-doc' | 'video' | 'link' | 'summary' | 'pdf'>('google-doc');
   const [docUrl, setDocUrl] = useState('');
   const [docNotes, setDocNotes] = useState('');
+  const [docTargetStudentIds, setDocTargetStudentIds] = useState<string[]>([]);
   const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
 
   const [assignStudentId, setAssignStudentId] = useState('all');
