@@ -1641,18 +1641,16 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
                           </div>
                           <h4 className="text-sm font-bold text-white">{item.title}</h4>
                           <p className="text-xs text-slate-300 bg-slate-950 p-3 rounded border border-slate-700">{item.studentNotes}</p>
-                          <a href={item.submissionUrl} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline text-xs flex items-center space-x-1">
-                            {item.submissionFiles?.map((url, index) => (
-  <img
-    key={index}
-    src={url}
-    alt={`Ödev fotoğrafı ${index + 1}`}
-    className="w-full max-w-md rounded-lg border border-slate-700 mt-2"
-  />
-))}
-                            <span>{item.submissionUrl}</span><ExternalLink className="h-3 w-3" />
-                          </a>
-                        </div>
+                      <div className="space-y-2">
+  {item.submissionFiles?.map((url, index) => (
+    <img
+      key={index}
+      src={url}
+      alt={`Ödev fotoğrafı ${index + 1}`}
+      className="w-full max-w-md rounded-lg border border-slate-700"
+    />
+  ))}
+</div>
                       );
                     })}
                   </div>
