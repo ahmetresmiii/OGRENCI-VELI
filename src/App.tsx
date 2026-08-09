@@ -97,6 +97,7 @@ interface Assignment {
   status: 'Bekliyor' | 'Tamamlandı';
   studentNotes?: string;
   submissionUrl?: string;
+  submissionFiles?: string[];
   submittedAt?: string;
 }
 
