@@ -819,7 +819,7 @@ const uploadedPhotoUrls = await Promise.all(
           ...assign,
           status: 'Tamamlandı' as const,
           submissionUrl: studentSubmissionUrl,
-          submissionFiles: studentSubmissionFiles,
+          submissionFiles: uploadedPhotoUrls,
           studentNotes: studentSubmissionNotes || 'Ödev tamamlandı.',
           submittedAt: new Date().toLocaleString('tr-TR')
         };
