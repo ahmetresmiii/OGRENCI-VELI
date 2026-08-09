@@ -810,8 +810,9 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
   const handleStudentSubmitHomework = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submittingAssignmentId) return;
+    try {
 const uploadedPhotoUrls = await Promise.all(
-  studentSubmissionFiles.map(file => uploadToCloudinary(file))
+  (file => uploadToCloudinary(file))
 );
     const updated = assignments.map(assign => {
       if (assign.id === submittingAssignmentId) {
@@ -837,7 +838,15 @@ const submittedObj = updated.find(a => a.id === submittingAssignmentId);
     setSubmittingAssignmentId(null);
     setStudentSubmissionUrl('');
     setStudentSubmissionNotes('');
-    alert('Özetiniz başarıyla Firebase veritabanına ve öğretmeninize iletildi!');
+    alert('Özetiniz başarıyla öğretmeninize iletildi!');
+      } catch (error) {
+  console.error(error);
+  alert(
+    `Fotoğraf gönderilemedi: ${
+      error instanceof Error ? error.message : 'Bilinmeyen hata'
+    }`
+  );
+}
   };
 
   const insertSampleGoogleDoc = (type: string) => {
