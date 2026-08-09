@@ -799,9 +799,12 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
     }
   );
 
-  if (!response.ok) {
-    throw new Error('Fotoğraf yüklenemedi.');
-  }
+ if (!response.ok) {
+  const errorData = await response.json();
+  throw new Error(
+    errorData?.error?.message || `Cloudinary hata kodu: ${response.status}`
+  );
+}
 
   const data = await response.json();
   return data.secure_url;
