@@ -810,7 +810,9 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
   const handleStudentSubmitHomework = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submittingAssignmentId) return;
-
+const uploadedPhotoUrls = await Promise.all(
+  studentSubmissionFiles.map(file => uploadToCloudinary(file))
+);
     const updated = assignments.map(assign => {
       if (assign.id === submittingAssignmentId) {
         return {
